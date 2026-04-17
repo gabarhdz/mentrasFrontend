@@ -1,3 +1,30 @@
+import { useEffect, useState } from "react";
+
+import { FeatureGrid } from "@/components/home/feature-grid";
+import { HeroSection } from "@/components/home/hero-section";
+import { ProcessSection } from "@/components/home/process-section";
+import { SocialProofSection } from "@/components/home/social-proof-section";
+
 export default function Home() {
-  return <h1 className="text-2xl">Home</h1>;
+  const [isDark, setIsDark] = useState(false);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", isDark);
+
+    return () => {
+      document.documentElement.classList.remove("dark");
+    };
+  }, [isDark]);
+
+  return (
+    <main className="min-h-screen bg-background text-foreground">
+      <HeroSection
+        isDark={isDark}
+        onToggleTheme={() => setIsDark((current) => !current)}
+      />
+      <FeatureGrid />
+      <ProcessSection />
+      <SocialProofSection />
+    </main>
+  );
 }

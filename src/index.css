@@ -56,6 +56,15 @@
     --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+@keyframes marquee {
+    from {
+        transform: translateX(0);
+    }
+    to {
+        transform: translateX(-50%);
+    }
+}
+
 :root {
     --background: var(--color-brand-background);
     --foreground: var(--color-brand-foreground);
@@ -129,10 +138,24 @@
   * {
     @apply border-border outline-ring/50;
     }
+  html {
+    scroll-behavior: smooth;
+    }
   body {
     @apply bg-background text-foreground;
     }
+  html,
+  body,
+  #root {
+    min-height: 100%;
+    }
   html {
     @apply font-sans;
+    }
+}
+
+@layer utilities {
+  .animate-marquee {
+    animation: marquee 24s linear infinite;
     }
 }
