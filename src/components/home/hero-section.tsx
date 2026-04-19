@@ -48,7 +48,7 @@ export function HeroSection({ isDark, onToggleTheme }: HeroSectionProps) {
           <ThemeToggle isDark={isDark} onToggle={onToggleTheme} />
         </div>
 
-        <div className="mt-12 grid items-center gap-12 lg:grid-cols-[1.02fr_0.98fr]">
+        <div className="mt-12 grid items-center gap-12 lg:grid-cols-[0.9fr_1.1fr] lg:gap-4">
           <Reveal className="space-y-8">
             <div className="space-y-6">
               <span className="inline-flex items-center rounded-full bg-primary/10 px-4 py-2 text-sm font-medium text-primary">
@@ -97,36 +97,27 @@ export function HeroSection({ isDark, onToggleTheme }: HeroSectionProps) {
           </Reveal>
 
           <Reveal delay={0.12}>
-            <div className="relative mx-auto w-full max-w-[34rem] lg:max-w-none">
+            <div className="relative mx-auto w-full max-w-[56rem] lg:max-w-none">
               <motion.div
-                className="absolute inset-x-10 bottom-4 top-10 -z-10 rounded-full bg-primary/25 blur-3xl"
-                animate={{ scale: [1, 1.08, 1], opacity: [0.35, 0.5, 0.35] }}
-                transition={{ duration: 6, repeat: Number.POSITIVE_INFINITY, ease: "easeInOut" }}
+                className="absolute left-[18%] top-[4%] -z-10 h-56 w-56 rounded-full bg-secondary/30 blur-3xl sm:h-80 sm:w-80"
+                animate={{ scale: [1, 1.08, 1], opacity: [0.28, 0.45, 0.28] }}
+                transition={{ duration: 7, repeat: Number.POSITIVE_INFINITY, ease: "easeInOut" }}
               />
-              <div className="relative overflow-hidden rounded-[2.25rem] border border-border/70 bg-card p-3 shadow-[0_28px_100px_-42px_color-mix(in_oklab,var(--primary)_34%,transparent)] sm:p-4">
-                <div className="absolute inset-x-10 top-2 h-28 rounded-full bg-secondary/20 blur-3xl" />
-                <div className="relative overflow-hidden rounded-[1.8rem] bg-[linear-gradient(155deg,color-mix(in_oklab,var(--primary)_14%,white),color-mix(in_oklab,var(--secondary)_12%,white)_48%,color-mix(in_oklab,var(--accent)_12%,white))] dark:bg-[linear-gradient(155deg,color-mix(in_oklab,var(--primary)_20%,black),color-mix(in_oklab,var(--secondary)_14%,black)_48%,color-mix(in_oklab,var(--accent)_12%,black))]">
-                  <div className="flex items-center justify-between border-b border-white/40 px-5 py-4 backdrop-blur sm:px-6">
-                    <div>
-                      <p className="text-xs font-medium uppercase tracking-[0.22em] text-muted-foreground">
-                        Confianza real
-                      </p>
-                      <p className="mt-1 text-lg font-semibold">Mentras acompana tu crecimiento</p>
-                    </div>
-                    <div className="rounded-full bg-accent px-3 py-1 text-xs font-semibold text-accent-foreground shadow-sm">
-                      1 a 1
-                    </div>
-                  </div>
-
-                  <div className="relative min-h-[27rem] px-4 pt-4 sm:min-h-[33rem] sm:px-6 sm:pt-6">
-                    <img
-                      src="/smiling-man.webp"
-                      alt="Emprendedor sonriendo mientras usa Mentras"
-                      className="absolute bottom-0 right-0 z-10 h-[25rem] w-auto max-w-none object-contain drop-shadow-[0_28px_45px_rgba(0,0,0,0.18)] sm:h-[31rem] lg:h-[33rem]"
-                    />
-
-                    
-                  </div>
+              <motion.div
+                className="absolute right-[0%] top-[14%] -z-10 h-72 w-72 rounded-full bg-primary/30 blur-3xl sm:h-96 sm:w-96"
+                animate={{ scale: [1.02, 1.12, 1.02], opacity: [0.24, 0.4, 0.24] }}
+                transition={{ duration: 8, repeat: Number.POSITIVE_INFINITY, ease: "easeInOut", delay: 0.6 }}
+              />
+              <div className="relative min-h-[24rem] overflow-hidden pt-8 sm:min-h-[31rem] sm:pt-12 lg:min-h-[39rem] lg:pt-2">
+                <div className="absolute inset-x-[12%] bottom-10 h-24 rounded-full bg-foreground/12 blur-3xl dark:bg-black/35" />
+                <div className="absolute inset-x-0 bottom-0 z-20 h-28 bg-gradient-to-b from-transparent via-background/72 to-background sm:h-36 lg:h-40" />
+                
+                <div className="relative z-10 h-[18rem] overflow-hidden sm:h-[24rem] lg:h-[32rem]">
+                  <img
+                    src="/SMEs_owner_landing.png"
+                    alt="Profesionales y emprendedores usando Mentras"
+                    className="absolute bottom-0 left-1/2 h-auto w-[155%] max-w-none -translate-x-[45%] object-contain drop-shadow-[0_34px_60px_rgba(4,24,25,0.18)] [clip-path:inset(0_0_0_6%)] [mask-image:linear-gradient(to_bottom,black_0%,black_72%,transparent_100%)] sm:w-[165%] sm:-translate-x-[45%] lg:w-[205%] lg:-translate-x-[46.5%] xl:w-[220%] xl:-translate-x-[47%]"
+                  />
                 </div>
               </div>
             </div>
