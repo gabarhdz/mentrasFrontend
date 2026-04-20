@@ -68,10 +68,10 @@ export function HeroSection({ isDark, onToggleTheme }: HeroSectionProps) {
 
             <div className="flex flex-wrap gap-3">
               <a
-                href="#contacto"
+                href="/auth"
                 className="inline-flex items-center gap-2 rounded-full bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/20 transition-transform hover:-translate-y-0.5"
               >
-                Quiero digitalizar mi negocio
+                Entrar para comenzar
                 <ArrowRight className="size-4" />
               </a>
               <a
