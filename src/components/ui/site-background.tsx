@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import Grainient from "@/components/Grainient";
+import Grainient from "@/components/ui/react-bits/grainient";
 
 const lightBackground = {
   color1: "#fafafa",
