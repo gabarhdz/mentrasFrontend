@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ChangeEvent } from 'react'
 
+import { buildBackendUrl } from '@/lib/utils'
+
 const socialProviders = [
   { id: 'google', label: 'Continuar con Google', badge: <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128"><path fill="#fff" d="M44.59 4.21a63.28 63.28 0 0 0 4.33 120.9a67.6 67.6 0 0 0 32.36.35a57.13 57.13 0 0 0 25.9-13.46a57.44 57.44 0 0 0 16-26.26a74.3 74.3 0 0 0 1.61-33.58H65.27v24.69h34.47a29.72 29.72 0 0 1-12.66 19.52a36.2 36.2 0 0 1-13.93 5.5a41.3 41.3 0 0 1-15.1 0A37.2 37.2 0 0 1 44 95.74a39.3 39.3 0 0 1-14.5-19.42a38.3 38.3 0 0 1 0-24.63a39.25 39.25 0 0 1 9.18-14.91A37.17 37.17 0 0 1 76.13 27a34.3 34.3 0 0 1 13.64 8q5.83-5.8 11.64-11.63c2-2.09 4.18-4.08 6.15-6.22A61.2 61.2 0 0 0 87.2 4.59a64 64 0 0 0-42.61-.38"/><path fill="#e33629" d="M44.59 4.21a64 64 0 0 1 42.61.37a61.2 61.2 0 0 1 20.35 12.62c-2 2.14-4.11 4.14-6.15 6.22Q95.58 29.23 89.77 35a34.3 34.3 0 0 0-13.64-8a37.17 37.17 0 0 0-37.46 9.74a39.25 39.25 0 0 0-9.18 14.91L8.76 35.6A63.53 63.53 0 0 1 44.59 4.21"/><path fill="#f8bd00" d="M3.26 51.5a63 63 0 0 1 5.5-15.9l20.73 16.09a38.3 38.3 0 0 0 0 24.63q-10.36 8-20.73 16.08a63.33 63.33 0 0 1-5.5-40.9"/><path fill="#587dbd" d="M65.27 52.15h59.52a74.3 74.3 0 0 1-1.61 33.58a57.44 57.44 0 0 1-16 26.26c-6.69-5.22-13.41-10.4-20.1-15.62a29.72 29.72 0 0 0 12.66-19.54H65.27c-.01-8.22 0-16.45 0-24.68"/><path fill="#319f43" d="M8.75 92.4q10.37-8 20.73-16.08A39.3 39.3 0 0 0 44 95.74a37.2 37.2 0 0 0 14.08 6.08a41.3 41.3 0 0 0 15.1 0a36.2 36.2 0 0 0 13.93-5.5c6.69 5.22 13.41 10.4 20.1 15.62a57.13 57.13 0 0 1-25.9 13.47a67.6 67.6 0 0 1-32.36-.35a63 63 0 0 1-23-11.59A63.7 63.7 0 0 1 8.75 92.4"/></svg> },
   { id: 'microsoft', label: 'Continuar con Microsoft', badge: <svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256"><path fill="#f1511b" d="M121.666 121.666H0V0h121.666z"/><path fill="#80cc28" d="M256 121.666H134.335V0H256z"/><path fill="#00adef" d="M121.663 256.002H0V134.336h121.663z"/><path fill="#fbbc09" d="M256 256.002H134.335V134.336H256z"/></svg>},
@@ -9,11 +11,19 @@ const socialProviders = [
 
 const AuthForm = () => {
   const [isLogin, setIsLogin] = useState(true)
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [email, setEmail] = useState('')
+  const [phoneNumber, setPhoneNumber] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [profilePic, setProfilePic] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const toggleForm = () => {
+    setFeedback(null)
     setIsLogin(!isLogin)
   }
 
@@ -33,7 +43,7 @@ const AuthForm = () => {
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0] ?? null
-    const maxFileSize = 5 * 1024 * 10242
+    const maxFileSize = 5 * 1024 * 1024
 
     if (file && file.size > maxFileSize) {
       alert('La imagen es demasiado grande. Elige una menor de 5MB.')
@@ -52,14 +62,112 @@ const AuthForm = () => {
     }
   }
 
+  const resetSignupFields = () => {
+    setUsername('')
+    setPassword('')
+    setEmail('')
+    setPhoneNumber('')
+    setConfirmPassword('')
+    clearSelectedFile()
+  }
+
+  const handleSubmit = async (e: ChangeEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    setFeedback(null)
+
+    if (isLogin) {
+      setFeedback({
+        type: 'error',
+        message: 'El login aun no esta conectado. Por ahora solo esta integrado el registro.',
+      })
+      return
+    }
+
+    if (password !== confirmPassword) {
+      setFeedback({
+        type: 'error',
+        message: 'Las contrasenas no coinciden.',
+      })
+      return
+    }
+
+    if (!profilePic) {
+      setFeedback({
+        type: 'error',
+        message: 'Debes subir una foto de perfil para crear el usuario.',
+      })
+      return
+    }
+
+    const formData = new FormData()
+    formData.append('username', username)
+    formData.append('password', password)
+    formData.append('profile_pic', profilePic)
+    formData.append('email', email)
+    formData.append('phone_number', phoneNumber)
+
+    setIsSubmitting(true)
+
+    try {
+      const response = await fetch(buildBackendUrl('/api/user/'), {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!response.ok) {
+        let errorMessage = 'No se pudo crear el usuario.'
+
+        try {
+          const errorData = await response.json()
+          if (typeof errorData.detail === 'string') {
+            errorMessage = errorData.detail
+          } else if (typeof errorData.message === 'string') {
+            errorMessage = errorData.message
+          } else {
+            errorMessage = JSON.stringify(errorData)
+          }
+        } catch {
+          errorMessage = `No se pudo crear el usuario. Codigo ${response.status}.`
+        }
+
+        throw new Error(errorMessage)
+      }
+
+      setFeedback({
+        type: 'success',
+        message: 'Usuario creado correctamente.',
+      })
+      resetSignupFields()
+    } catch (error) {
+      setFeedback({
+        type: 'error',
+        message: error instanceof Error ? error.message : 'Ocurrio un error inesperado.',
+      })
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
   return (
     <div className="relative z-10 mx-auto max-w-2xl min-h-[44rem] overflow-hidden rounded-lg border border-border bg-card p-8 shadow-md before:absolute before:-z-10 before:h-24 before:w-24 before:rounded-full before:bg-primary/30 before:blur-2xl after:absolute after:top-24 after:-right-12 after:-z-10 after:h-32 after:w-32 after:rounded-full after:bg-primary/25 after:blur-xl">
       <h2 className="mb-6 text-2xl font-bold text-foreground">
         {isLogin ? 'Inicia sesion en Mentras' : 'Crea tu cuenta en Mentras'}
       </h2>
 
-      <form method="post" action="#" className="flex min-h-[calc(44rem-7rem)] flex-col justify-center">
+      <form method="post" action="#" className="flex min-h-[calc(44rem-7rem)] flex-col justify-center" onSubmit={handleSubmit}>
         <div className="space-y-6">
+          {feedback && (
+            <div
+              className={`rounded-md border px-4 py-3 text-sm ${
+                feedback.type === 'success'
+                  ? 'border-primary/30 bg-primary/10 text-foreground'
+                  : 'border-destructive/30 bg-destructive/10 text-foreground'
+              }`}
+            >
+              {feedback.message}
+            </div>
+          )}
+
           <div className={`grid gap-4 ${isLogin ? 'grid-cols-1' : 'md:grid-cols-2'}`}>
             <div className="mb-4">
               <label className="block text-sm font-medium text-muted-foreground" htmlFor="username">
@@ -70,6 +178,8 @@ const AuthForm = () => {
                 name="username"
                 id="username"
                 type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
               />
             </div>
 
@@ -82,6 +192,8 @@ const AuthForm = () => {
                 name="password"
                 id="password"
                 type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
               />
             </div>
           </div>
@@ -98,20 +210,38 @@ const AuthForm = () => {
                     name="email"
                     id="email"
                     type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
                   />
                 </div>
 
                 <div className="mb-6">
-                  <label className="block text-sm font-medium text-muted-foreground" htmlFor="confirm-password">
-                    Confirmar contrasena
+                  <label className="block text-sm font-medium text-muted-foreground" htmlFor="phone-number">
+                    Telefono
                   </label>
                   <input
                     className="mt-1 w-full rounded-md border border-input bg-background p-2 text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-                    name="confirm-password"
-                    id="confirm-password"
-                    type="password"
+                    name="phone-number"
+                    id="phone-number"
+                    type="tel"
+                    value={phoneNumber}
+                    onChange={(e) => setPhoneNumber(e.target.value)}
                   />
                 </div>
+              </div>
+
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-muted-foreground" htmlFor="confirm-password">
+                  Confirmar contrasena
+                </label>
+                <input
+                  className="mt-1 w-full rounded-md border border-input bg-background p-2 text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  name="confirm-password"
+                  id="confirm-password"
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                />
               </div>
 
               <div className="mb-6">
@@ -204,8 +334,9 @@ const AuthForm = () => {
             <button
               className="rounded-md bg-primary px-4 py-2 font-bold text-primary-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
               type="submit"
+              disabled={isSubmitting}
             >
-              {isLogin ? 'Iniciar sesion' : 'Registrarme'}
+              {isSubmitting ? 'Enviando...' : isLogin ? 'Iniciar sesion' : 'Registrarme'}
             </button>
 
             <div className="w-full text-center">
