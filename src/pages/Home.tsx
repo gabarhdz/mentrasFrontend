@@ -17,7 +17,7 @@ export default function Home() {
   }, [isDark]);
 
   return (
-    <main className="min-h-screen bg-background text-foreground">
+    <main className="relative min-h-screen text-foreground">
       <HeroSection
         isDark={isDark}
         onToggleTheme={() => setIsDark((current) => !current)}

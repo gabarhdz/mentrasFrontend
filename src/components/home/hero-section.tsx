@@ -37,7 +37,7 @@ const marqueeItems = [
 export function HeroSection({ isDark, onToggleTheme }: HeroSectionProps) {
   return (
     <section className="relative overflow-hidden px-6 pb-16 pt-6 sm:pb-24 sm:pt-10">
-      <div className="absolute inset-x-0 top-0 -z-10 h-[32rem] bg-[radial-gradient(circle_at_top_left,_color-mix(in_oklab,var(--color-brand-secondary)_30%,transparent),transparent_45%),radial-gradient(circle_at_80%_10%,_color-mix(in_oklab,var(--color-brand-primary)_22%,transparent),transparent_42%),linear-gradient(to_bottom,_transparent,_color-mix(in_oklab,var(--background)_88%,white_12%))]" />
+      <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top_left,_color-mix(in_oklab,var(--secondary)_28%,transparent),transparent_46%),radial-gradient(circle_at_80%_10%,_color-mix(in_oklab,var(--primary)_18%,transparent),transparent_42%),linear-gradient(to_bottom,_color-mix(in_oklab,var(--background)_30%,transparent),transparent_100%)] [mask-image:linear-gradient(to_bottom,black_0%,black_68%,transparent_100%)] [-webkit-mask-image:linear-gradient(to_bottom,black_0%,black_68%,transparent_100%)]" />
 
       <div className="mx-auto max-w-6xl">
         <div className="flex items-center justify-between gap-4">
@@ -109,14 +109,13 @@ export function HeroSection({ isDark, onToggleTheme }: HeroSectionProps) {
                 transition={{ duration: 8, repeat: Number.POSITIVE_INFINITY, ease: "easeInOut", delay: 0.6 }}
               />
               <div className="relative min-h-[24rem] overflow-hidden pt-8 sm:min-h-[31rem] sm:pt-12 lg:min-h-[39rem] lg:pt-2">
-                <div className="absolute inset-x-[12%] bottom-10 h-24 rounded-full bg-foreground/12 blur-3xl dark:bg-black/35" />
-                <div className="absolute inset-x-0 bottom-0 z-20 h-28 bg-gradient-to-b from-transparent via-background/72 to-background sm:h-36 lg:h-40" />
-                
-                <div className="relative z-10 h-[18rem] overflow-hidden sm:h-[24rem] lg:h-[32rem]">
+                <div className="absolute inset-x-[14%] bottom-10 h-24 rounded-full bg-black/12 blur-3xl dark:bg-black/30" />
+
+                <div className="relative z-10 h-[18rem] overflow-hidden [mask-image:linear-gradient(to_bottom,black_0%,black_76%,transparent_100%)] [-webkit-mask-image:linear-gradient(to_bottom,black_0%,black_76%,transparent_100%)] sm:h-[24rem] lg:h-[32rem]">
                   <img
                     src="/SMEs_owner_landing.png"
                     alt="Profesionales y emprendedores usando Mentras"
-                    className="absolute bottom-0 left-1/2 h-auto w-[155%] max-w-none -translate-x-[45%] object-contain drop-shadow-[0_34px_60px_rgba(4,24,25,0.18)] [clip-path:inset(0_0_0_6%)] [mask-image:linear-gradient(to_bottom,black_0%,black_72%,transparent_100%)] sm:w-[165%] sm:-translate-x-[45%] lg:w-[205%] lg:-translate-x-[46.5%] xl:w-[220%] xl:-translate-x-[47%]"
+                    className="absolute bottom-0 left-1/2 h-auto w-[155%] max-w-none -translate-x-[45%] object-contain drop-shadow-[0_34px_60px_rgba(4,24,25,0.18)] [clip-path:inset(0_0_0_6%)] sm:w-[165%] sm:-translate-x-[45%] lg:w-[205%] lg:-translate-x-[46.5%] xl:w-[220%] xl:-translate-x-[47%]"
                   />
                 </div>
               </div>
