@@ -1,10 +1,16 @@
-import React from 'react'
+import { useEffect } from 'react'
 
 const Profile = () => {
+    useEffect(() => {
+        const idUser = localStorage.getItem('idUser')
+        if (!idUser) {
+            window.location.href = '/auth'
+        }
+    }, [])
   return (
-    <div>
-      
-    </div>
+    <>
+
+    </>
   )
 }
 

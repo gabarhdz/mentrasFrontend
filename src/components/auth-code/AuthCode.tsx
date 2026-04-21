@@ -1,11 +1,80 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ChangeEvent, ClipboardEvent, KeyboardEvent } from 'react'
 import { buildBackendUrl } from '@/lib/utils'
+
 const otpLength = 6
+const resendCooldownSeconds = 180
 
 const AuthCodeCard = () => {
   const [otp, setOtp] = useState<string[]>(() => Array(otpLength).fill(''))
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isResending, setIsResending] = useState(false)
+  const [remainingSeconds, setRemainingSeconds] = useState(0)
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
   const inputRefs = useRef<Array<HTMLInputElement | null>>([])
+  const userId = localStorage.getItem('idUser')
+  const resendCooldownKey = userId ? `auth-code-resend-at:${userId}` : null
+
+  useEffect(() => {
+    if (!userId) {
+      window.location.href = '/auth'
+    }
+  }, [userId])
+
+  useEffect(() => {
+    if (!resendCooldownKey) {
+      setRemainingSeconds(0)
+      return
+    }
+
+    const syncRemainingSeconds = () => {
+      const storedResendAt = localStorage.getItem(resendCooldownKey)
+
+      if (!storedResendAt) {
+        setRemainingSeconds(0)
+        return
+      }
+
+      const resendAt = Number(storedResendAt)
+      const nextRemainingSeconds = Math.max(0, Math.ceil((resendAt - Date.now()) / 1000))
+      setRemainingSeconds(nextRemainingSeconds)
+
+      if (nextRemainingSeconds === 0) {
+        localStorage.removeItem(resendCooldownKey)
+      }
+    }
+
+    syncRemainingSeconds()
+    const intervalId = window.setInterval(syncRemainingSeconds, 1000)
+
+    return () => {
+      window.clearInterval(intervalId)
+    }
+  }, [resendCooldownKey])
+
+  const getErrorMessage = async (response: Response, fallbackMessage: string) => {
+    try {
+      const data = await response.json()
+
+      if (typeof data.detail === 'string') {
+        return data.detail
+      }
+
+      if (typeof data.message === 'string') {
+        return data.message
+      }
+
+      return fallbackMessage
+    } catch {
+      return fallbackMessage
+    }
+  }
+
+  const formatRemainingTime = (seconds: number) => {
+    const minutes = Math.floor(seconds / 60)
+    const remaining = seconds % 60
+    return `${minutes}:${remaining.toString().padStart(2, '0')}`
+  }
 
   const focusInput = (index: number) => {
     inputRefs.current[index]?.focus()
@@ -80,20 +149,104 @@ const AuthCodeCard = () => {
     focusInput(nextFocusIndex)
   }
 
-  const handleSubmit = async (event: React.FormEvent<HTMLButtonElement>) => {
+  const handleSubmit = async (event: React.MouseEvent<HTMLButtonElement>) => {
     event.preventDefault()
+    setFeedback(null)
+
+    if (!userId) {
+      setFeedback({
+        type: 'error',
+        message: 'No encontramos el usuario para validar el codigo. Volve a registrarte.',
+      })
+      return
+    }
+
     const verificationCode = otp.join('')
+
+    if (verificationCode.length !== otpLength) {
+      setFeedback({
+        type: 'error',
+        message: 'Ingresa el codigo completo de 6 digitos.',
+      })
+      return
+    }
+
     const formData = new FormData()
     formData.append('code', verificationCode)
+
+    setIsSubmitting(true)
+
     try {      
-      const response = await fetch(buildBackendUrl('/api/user/activate-email/' + localStorage.getItem('idUser')+"/"), {
-              method: 'POST',
-              body: formData,
-            })
-            window.location.href = '/profile'
-        
+      const response = await fetch(buildBackendUrl(`/api/user/activate-email/${userId}/`), {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!response.ok) {
+        throw new Error(await getErrorMessage(response, 'No se pudo verificar el codigo.'))
+      }
+
+      setFeedback({
+        type: 'success',
+        message: 'Codigo verificado correctamente.',
+      })
+      window.location.href = '/auth'
     } catch (error) {
-      console.error('Error al verificar el código:', error)
+      setFeedback({
+        type: 'error',
+        message: error instanceof Error ? error.message : 'Ocurrio un error al verificar el codigo.',
+      })
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleResendCode = async () => {
+    setFeedback(null)
+
+    if (!userId) {
+      setFeedback({
+        type: 'error',
+        message: 'No encontramos el usuario para reenviar el codigo. Volve a registrarte.',
+      })
+      return
+    }
+
+    if (remainingSeconds > 0) {
+      setFeedback({
+        type: 'error',
+        message: `Debes esperar ${formatRemainingTime(remainingSeconds)} para reenviar otro codigo.`,
+      })
+      return
+    }
+
+    setIsResending(true)
+
+    try {
+      const response = await fetch(buildBackendUrl(`/api/user/resend-code/${userId}/`), {
+        method: 'POST',
+      })
+
+      if (!response.ok) {
+        throw new Error(await getErrorMessage(response, 'No se pudo reenviar el codigo.'))
+      }
+
+      const resendAt = Date.now() + resendCooldownSeconds * 1000
+      if (resendCooldownKey) {
+        localStorage.setItem(resendCooldownKey, resendAt.toString())
+      }
+      setRemainingSeconds(resendCooldownSeconds)
+      setFeedback({
+        type: 'success',
+        message: 'Te enviamos un nuevo codigo al correo. Debes esperar 3 minutos para pedir otro.',
+      })
+    } catch (error) {
+      setFeedback({
+        type: 'error',
+        message: error instanceof Error ? error.message : 'Ocurrio un error al reenviar el codigo.',
+      })
+    } finally {
+      setIsResending(false)
     }
   }
 
@@ -106,6 +259,18 @@ const AuthCodeCard = () => {
           className="relative flex flex-col items-center justify-center overflow-hidden rounded-xl bg-white p-4 [box-shadow:var(--shadow)]"
         >
           <h6 className="text-2xl font-bold">Código de verificacion</h6>
+
+          {feedback && (
+            <div
+              className={`mt-4 w-full rounded-md border px-4 py-3 text-sm ${
+                feedback.type === 'success'
+                  ? 'border-primary/30 bg-primary/10 text-foreground'
+                  : 'border-destructive/30 bg-destructive/10 text-foreground'
+              }`}
+            >
+              {feedback.message}
+            </div>
+          )}
 
           <div
             className="my-6 flex w-full items-center justify-center gap-3"
@@ -141,10 +306,24 @@ const AuthCodeCard = () => {
 
           <button
             type="button"
-                onClick={handleSubmit}
-            className="mt-[14px] w-full rounded-md border border-solid border-transparent bg-primary px-4 py-1 text-base font-medium tracking-wider text-white transition-colors duration-200 hover:bg-sky-600/80"
+            onClick={handleSubmit}
+            disabled={isSubmitting || isResending}
+            className="mt-[14px] w-full rounded-md border border-solid border-transparent bg-primary px-4 py-1 text-base font-medium tracking-wider text-white transition-colors duration-200 hover:bg-sky-600/80 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            Verify
+            {isSubmitting ? 'Verificando...' : 'Verify'}
+          </button>
+
+          <button
+            type="button"
+            onClick={handleResendCode}
+            disabled={isSubmitting || isResending || remainingSeconds > 0}
+            className="mt-3 text-sm font-medium text-primary transition-colors duration-200 hover:text-sky-600 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isResending
+              ? 'Reenviando codigo...'
+              : remainingSeconds > 0
+                ? `Reenviar codigo en ${formatRemainingTime(remainingSeconds)}`
+                : 'Reenviar codigo'}
           </button>
         </div>
 
