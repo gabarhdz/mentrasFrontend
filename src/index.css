@@ -158,4 +158,13 @@
   .animate-marquee {
     animation: marquee 24s linear infinite;
     }
+  .hide-number-spin {
+    appearance: textfield;
+    -moz-appearance: textfield;
+    }
+  .hide-number-spin::-webkit-outer-spin-button,
+  .hide-number-spin::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+    }
 }

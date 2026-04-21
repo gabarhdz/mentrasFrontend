@@ -2,6 +2,7 @@ import { Routes, Route } from "react-router-dom";
 import Home from "./pages/Home";
 import NotFound from "./pages/NotFound";
 import Auth from "./pages/Auth";
+import AuthCode from "./pages/AuthCode";
 import { SiteBackground } from "@/components/ui/site-background";
 
 export default function App() {
@@ -12,6 +13,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/auth" element={<Auth />} />
+          <Route path="/auth-code" element={<AuthCode />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </div>
