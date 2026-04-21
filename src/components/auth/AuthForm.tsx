@@ -76,10 +76,44 @@ const AuthForm = () => {
     setFeedback(null)
 
     if (isLogin) {
-      setFeedback({
-        type: 'error',
-        message: 'El login aun no esta conectado. Por ahora solo esta integrado el registro.',
-      })
+      setIsSubmitting(true)
+
+      try {
+        const response = await fetch(buildBackendUrl('/api/user/login/'), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ username, password }),
+        })
+        const data = await response.json()
+
+        if (!response.ok) {
+          const errorMessage =
+            typeof data.detail === 'string'
+              ? data.detail
+              : typeof data.message === 'string'
+                ? data.message
+                : 'No se pudo iniciar sesion.'
+
+          throw new Error(errorMessage)
+        }
+
+        localStorage.setItem('jwt_token', data.access)
+        setFeedback({
+          type: 'success',
+          message: 'Sesion iniciada correctamente.',
+        })
+        window.location.href = '/profile'
+      } catch (error) {
+        setFeedback({
+          type: 'error',
+          message: error instanceof Error ? error.message : 'Ocurrio un error al iniciar sesion.',
+        })
+      } finally {
+        setIsSubmitting(false)
+      }
+
       return
     }
 
@@ -118,16 +152,13 @@ const AuthForm = () => {
       if (!response.ok) {
         let errorMessage = 'No se pudo crear el usuario.'
 
-        try {
-          const errorData = await response.json()
-          if (typeof errorData.detail === 'string') {
-            errorMessage = errorData.detail
-          } else if (typeof errorData.message === 'string') {
-            errorMessage = errorData.message
-          } else {
-            errorMessage = JSON.stringify(errorData)
-          }
-        } catch {
+        if (typeof data.detail === 'string') {
+          errorMessage = data.detail
+        } else if (typeof data.message === 'string') {
+          errorMessage = data.message
+        } else if (data && typeof data === 'object') {
+          errorMessage = JSON.stringify(data)
+        } else {
           errorMessage = `No se pudo crear el usuario. Codigo ${response.status}.`
         }
 
