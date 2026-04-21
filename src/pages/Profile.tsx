@@ -1,15 +1,17 @@
 import { useEffect } from 'react'
+import Footer from '@/components/ui/Footer'
 
 const Profile = () => {
     useEffect(() => {
-        const idUser = localStorage.getItem('idUser')
-        if (!idUser) {
+        const jwt_token = localStorage.getItem('jwt_token') 
+        if (!jwt_token) {
             window.location.href = '/auth'
         }
     }, [])
   return (
     <>
 
+    <Footer />
     </>
   )
 }
