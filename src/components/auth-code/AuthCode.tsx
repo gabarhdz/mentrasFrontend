@@ -90,7 +90,7 @@ const AuthCodeCard = () => {
               method: 'POST',
               body: formData,
             })
-            console.log(response)
+            window.location.href = '/profile'
         
     } catch (error) {
       console.error('Error al verificar el código:', error)
