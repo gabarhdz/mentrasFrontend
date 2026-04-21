@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import type { ChangeEvent, ClipboardEvent, KeyboardEvent } from 'react'
-
+import { buildBackendUrl } from '@/lib/utils'
 const otpLength = 6
 
 const AuthCodeCard = () => {
@@ -80,6 +80,23 @@ const AuthCodeCard = () => {
     focusInput(nextFocusIndex)
   }
 
+  const handleSubmit = async (event: React.FormEvent<HTMLButtonElement>) => {
+    event.preventDefault()
+    const verificationCode = otp.join('')
+    const formData = new FormData()
+    formData.append('code', verificationCode)
+    try {      
+      const response = await fetch(buildBackendUrl('/api/user/activate-email/' + localStorage.getItem('idUser')+"/"), {
+              method: 'POST',
+              body: formData,
+            })
+            console.log(response)
+        
+    } catch (error) {
+      console.error('Error al verificar el código:', error)
+    }
+  }
+
   return (
     <>
       <div
@@ -88,7 +105,7 @@ const AuthCodeCard = () => {
         <div
           className="relative flex flex-col items-center justify-center overflow-hidden rounded-xl bg-white p-4 [box-shadow:var(--shadow)]"
         >
-          <h6 className="text-2xl font-bold">OTP Verification</h6>
+          <h6 className="text-2xl font-bold">Código de verificacion</h6>
 
           <div
             className="my-6 flex w-full items-center justify-center gap-3"
@@ -124,7 +141,8 @@ const AuthCodeCard = () => {
 
           <button
             type="button"
-            className="mt-[14px] w-full rounded-md border border-solid border-transparent bg-sky-500 px-4 py-1 text-base font-medium tracking-wider text-white transition-colors duration-200 hover:bg-sky-600/80"
+                onClick={handleSubmit}
+            className="mt-[14px] w-full rounded-md border border-solid border-transparent bg-primary px-4 py-1 text-base font-medium tracking-wider text-white transition-colors duration-200 hover:bg-sky-600/80"
           >
             Verify
           </button>
