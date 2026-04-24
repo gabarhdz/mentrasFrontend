@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ChangeEvent } from 'react'
 
+import { saveAuthTokens } from '@/lib/auth'
 import { buildBackendUrl } from '@/lib/utils'
 
 const socialProviders = [
@@ -99,7 +100,10 @@ const AuthForm = () => {
           throw new Error(errorMessage)
         }
 
-        localStorage.setItem('jwt_token', data.access)
+        saveAuthTokens({
+          access: typeof data.access === 'string' ? data.access : undefined,
+          refresh: typeof data.refresh === 'string' ? data.refresh : undefined,
+        })
         setFeedback({
           type: 'success',
           message: 'Sesion iniciada correctamente.',
