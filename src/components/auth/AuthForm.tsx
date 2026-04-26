@@ -21,6 +21,7 @@ const AuthForm = () => {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+  const [isPymeOwner, setIsPymeOwner] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const toggleForm = () => {
@@ -69,6 +70,7 @@ const AuthForm = () => {
     setEmail('')
     setPhoneNumber('')
     setConfirmPassword('')
+    setIsPymeOwner(false)
     clearSelectedFile()
   }
 
@@ -143,6 +145,7 @@ const AuthForm = () => {
     formData.append('profile_pic', profilePic)
     formData.append('email', email)
     formData.append('phone_number', phoneNumber)
+    formData.append('is_pyme_owner', isPymeOwner ? 'true' : 'false')
 
     setIsSubmitting(true)
 
@@ -281,6 +284,26 @@ const AuthForm = () => {
                   onChange={(e) => setConfirmPassword(e.target.value)}
                 />
               </div>
+
+              <label
+                htmlFor="is-pyme-owner"
+                className="mb-6 flex cursor-pointer items-start gap-3 rounded-lg border border-input bg-background px-4 py-3 transition-colors hover:border-primary/50"
+              >
+                <input
+                  className="mt-1 h-4 w-4 rounded border-input text-primary focus:ring-2 focus:ring-primary/20"
+                  name="is-pyme-owner"
+                  id="is-pyme-owner"
+                  type="checkbox"
+                  checked={isPymeOwner}
+                  onChange={(e) => setIsPymeOwner(e.target.checked)}
+                />
+                <span>
+                  <span className="block text-sm font-medium text-foreground">Soy dueno de una pyme</span>
+                  <span className="block text-sm text-muted-foreground">
+                    Activaremos este perfil como propietario de pyme en tu cuenta.
+                  </span>
+                </span>
+              </label>
 
               <div className="mb-6">
                 <label htmlFor="profile-pic" className="block text-sm font-medium text-muted-foreground">
