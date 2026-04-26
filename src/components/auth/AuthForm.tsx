@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ChangeEvent } from 'react'
+import { useGoogleLogin } from '@react-oauth/google'
 
 import { saveAuthTokens } from '@/lib/auth'
 import { buildBackendUrl } from '@/lib/utils'
@@ -23,6 +24,105 @@ const AuthForm = () => {
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
   const [isPymeOwner, setIsPymeOwner] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+
+  const resolveAuthSuccess = (data: unknown) => {
+    if (!data || typeof data !== 'object') {
+      return
+    }
+
+    const authData = data as {
+      access?: unknown
+      refresh?: unknown
+      id?: unknown
+      user?: {
+        id?: unknown
+      }
+    }
+
+    saveAuthTokens({
+      access: typeof authData.access === 'string' ? authData.access : undefined,
+      refresh: typeof authData.refresh === 'string' ? authData.refresh : undefined,
+    })
+
+    const userId =
+      typeof authData.user?.id === 'string'
+        ? authData.user.id
+        : typeof authData.user?.id === 'number'
+          ? String(authData.user.id)
+          : typeof authData.id === 'string'
+            ? authData.id
+            : typeof authData.id === 'number'
+              ? String(authData.id)
+              : null
+
+    if (userId) {
+      localStorage.setItem('idUser', userId)
+    }
+  }
+
+  const googleLogin = useGoogleLogin({
+    onSuccess: async (tokenResponse) => {
+      setFeedback(null)
+      setIsSubmitting(true)
+
+      try {
+        const response = await fetch(buildBackendUrl('/api/user/accounts/google/'), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            access_token: tokenResponse.access_token,
+          }),
+        })
+
+        const data = await response.json()
+
+        if (!response.ok) {
+          const errorMessage =
+            typeof data.detail === 'string'
+              ? data.detail
+              : typeof data.message === 'string'
+                ? data.message
+                : 'No se pudo iniciar sesion con Google.'
+
+          throw new Error(errorMessage)
+        }
+
+        resolveAuthSuccess(data)
+        setFeedback({
+          type: 'success',
+          message: 'Sesion iniciada correctamente con Google.',
+        })
+        window.location.href = '/profile'
+      } catch (error) {
+        setFeedback({
+          type: 'error',
+          message: error instanceof Error ? error.message : 'Ocurrio un error al iniciar sesion con Google.',
+        })
+      } finally {
+        setIsSubmitting(false)
+      }
+    },
+    onError: () => {
+      setFeedback({
+        type: 'error',
+        message: 'No se pudo completar el acceso con Google.',
+      })
+    },
+  })
+
+  const handleSocialLogin = (providerId: string) => {
+    if (providerId === 'google') {
+      googleLogin()
+      return
+    }
+
+    setFeedback({
+      type: 'error',
+      message: 'Este proveedor todavia no esta disponible.',
+    })
+  }
 
   const toggleForm = () => {
     setFeedback(null)
@@ -380,7 +480,9 @@ const AuthForm = () => {
                 <button
                   key={provider.id}
                   type="button"
-                  className="inline-flex items-center justify-center gap-3 rounded-lg border border-border bg-background px-4 py-3 text-sm font-semibold text-foreground transition-colors hover:bg-muted"
+                  className="inline-flex items-center justify-center gap-3 rounded-lg border border-border bg-background px-4 py-3 text-sm font-semibold text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+                  onClick={() => handleSocialLogin(provider.id)}
+                  disabled={isSubmitting}
                 >
                   <span className="flex size-8 items-center justify-center rounded-full bg-primary/10 text-primary">
                     {provider.badge}
