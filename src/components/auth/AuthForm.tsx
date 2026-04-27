@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ChangeEvent } from 'react'
-import { useGoogleLogin } from '@react-oauth/google'
+import { GoogleLogin } from '@react-oauth/google'
 
-import { saveAuthTokens } from '@/lib/auth'
+import { replaceAuthTokens, setStoredUserId } from '@/lib/auth'
+import { getGoogleOriginError } from '@/lib/google-auth'
 import { buildBackendUrl } from '@/lib/utils'
 
 const socialProviders = [
-  { id: 'google', label: 'Continuar con Google', badge: <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128"><path fill="#fff" d="M44.59 4.21a63.28 63.28 0 0 0 4.33 120.9a67.6 67.6 0 0 0 32.36.35a57.13 57.13 0 0 0 25.9-13.46a57.44 57.44 0 0 0 16-26.26a74.3 74.3 0 0 0 1.61-33.58H65.27v24.69h34.47a29.72 29.72 0 0 1-12.66 19.52a36.2 36.2 0 0 1-13.93 5.5a41.3 41.3 0 0 1-15.1 0A37.2 37.2 0 0 1 44 95.74a39.3 39.3 0 0 1-14.5-19.42a38.3 38.3 0 0 1 0-24.63a39.25 39.25 0 0 1 9.18-14.91A37.17 37.17 0 0 1 76.13 27a34.3 34.3 0 0 1 13.64 8q5.83-5.8 11.64-11.63c2-2.09 4.18-4.08 6.15-6.22A61.2 61.2 0 0 0 87.2 4.59a64 64 0 0 0-42.61-.38"/><path fill="#e33629" d="M44.59 4.21a64 64 0 0 1 42.61.37a61.2 61.2 0 0 1 20.35 12.62c-2 2.14-4.11 4.14-6.15 6.22Q95.58 29.23 89.77 35a34.3 34.3 0 0 0-13.64-8a37.17 37.17 0 0 0-37.46 9.74a39.25 39.25 0 0 0-9.18 14.91L8.76 35.6A63.53 63.53 0 0 1 44.59 4.21"/><path fill="#f8bd00" d="M3.26 51.5a63 63 0 0 1 5.5-15.9l20.73 16.09a38.3 38.3 0 0 0 0 24.63q-10.36 8-20.73 16.08a63.33 63.33 0 0 1-5.5-40.9"/><path fill="#587dbd" d="M65.27 52.15h59.52a74.3 74.3 0 0 1-1.61 33.58a57.44 57.44 0 0 1-16 26.26c-6.69-5.22-13.41-10.4-20.1-15.62a29.72 29.72 0 0 0 12.66-19.54H65.27c-.01-8.22 0-16.45 0-24.68"/><path fill="#319f43" d="M8.75 92.4q10.37-8 20.73-16.08A39.3 39.3 0 0 0 44 95.74a37.2 37.2 0 0 0 14.08 6.08a41.3 41.3 0 0 0 15.1 0a36.2 36.2 0 0 0 13.93-5.5c6.69 5.22 13.41 10.4 20.1 15.62a57.13 57.13 0 0 1-25.9 13.47a67.6 67.6 0 0 1-32.36-.35a63 63 0 0 1-23-11.59A63.7 63.7 0 0 1 8.75 92.4"/></svg> },
   { id: 'microsoft', label: 'Continuar con Microsoft', badge: <svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256"><path fill="#f1511b" d="M121.666 121.666H0V0h121.666z"/><path fill="#80cc28" d="M256 121.666H134.335V0H256z"/><path fill="#00adef" d="M121.663 256.002H0V134.336h121.663z"/><path fill="#fbbc09" d="M256 256.002H134.335V134.336H256z"/></svg>},
   { id: 'meta', label: 'Continuar con Meta/Facebook', badge: <svg xmlns="http://www.w3.org/2000/svg" width="256" height="171" viewBox="0 0 256 171"><defs><linearGradient id="SVGYeLhubCc" x1="13.878%" x2="89.144%" y1="55.934%" y2="58.694%"><stop offset="0%" stop-color="#0064e1"/><stop offset="40%" stop-color="#0064e1"/><stop offset="83%" stop-color="#0073ee"/><stop offset="100%" stop-color="#0082fb"/></linearGradient><linearGradient id="SVGll66Sdsg" x1="54.315%" x2="54.315%" y1="82.782%" y2="39.307%"><stop offset="0%" stop-color="#0082fb"/><stop offset="100%" stop-color="#0064e0"/></linearGradient></defs><path fill="#0081fb" d="M27.651 112.136c0 9.775 2.146 17.28 4.95 21.82c3.677 5.947 9.16 8.466 14.751 8.466c7.211 0 13.808-1.79 26.52-19.372c10.185-14.092 22.186-33.874 30.26-46.275l13.675-21.01c9.499-14.591 20.493-30.811 33.1-41.806C161.196 4.985 172.298 0 183.47 0c18.758 0 36.625 10.87 50.3 31.257C248.735 53.584 256 81.707 256 110.729c0 17.253-3.4 29.93-9.187 39.946c-5.591 9.686-16.488 19.363-34.818 19.363v-27.616c15.695 0 19.612-14.422 19.612-30.927c0-23.52-5.484-49.623-17.564-68.273c-8.574-13.23-19.684-21.313-31.907-21.313c-13.22 0-23.859 9.97-35.815 27.75c-6.356 9.445-12.882 20.956-20.208 33.944l-8.066 14.289c-16.203 28.728-20.307 35.271-28.408 46.07c-14.2 18.91-26.324 26.076-42.287 26.076c-18.935 0-30.91-8.2-38.325-20.556C2.973 139.413 0 126.202 0 111.148z"/><path fill="url(#SVGYeLhubCc)" d="M21.802 33.206C34.48 13.666 52.774 0 73.757 0C85.91 0 97.99 3.597 110.605 13.897c13.798 11.261 28.505 29.805 46.853 60.368l6.58 10.967c15.881 26.459 24.917 40.07 30.205 46.49c6.802 8.243 11.565 10.7 17.752 10.7c15.695 0 19.612-14.422 19.612-30.927l24.393-.766c0 17.253-3.4 29.93-9.187 39.946c-5.591 9.686-16.488 19.363-34.818 19.363c-11.395 0-21.49-2.475-32.654-13.007c-8.582-8.083-18.615-22.443-26.334-35.352l-22.96-38.352C118.528 64.08 107.96 49.73 101.845 43.23c-6.578-6.988-15.036-15.428-28.532-15.428c-10.923 0-20.2 7.666-27.963 19.39z"/><path fill="url(#SVGll66Sdsg)" d="M73.312 27.802c-10.923 0-20.2 7.666-27.963 19.39c-10.976 16.568-17.698 41.245-17.698 64.944c0 9.775 2.146 17.28 4.95 21.82L9.027 149.482C2.973 139.413 0 126.202 0 111.148C0 83.772 7.514 55.24 21.802 33.206C34.48 13.666 52.774 0 73.757 0z"/></svg> },
 ]
@@ -24,6 +24,8 @@ const AuthForm = () => {
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
   const [isPymeOwner, setIsPymeOwner] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const currentOrigin = window.location.origin
+  const googleOriginError = getGoogleOriginError(currentOrigin)
 
   const resolveAuthSuccess = (data: unknown) => {
     if (!data || typeof data !== 'object') {
@@ -39,7 +41,7 @@ const AuthForm = () => {
       }
     }
 
-    saveAuthTokens({
+    replaceAuthTokens({
       access: typeof authData.access === 'string' ? authData.access : undefined,
       refresh: typeof authData.refresh === 'string' ? authData.refresh : undefined,
     })
@@ -56,71 +58,77 @@ const AuthForm = () => {
               : null
 
     if (userId) {
-      localStorage.setItem('idUser', userId)
+      setStoredUserId(userId)
     }
   }
 
-  const googleLogin = useGoogleLogin({
-    onSuccess: async (tokenResponse) => {
-      setFeedback(null)
-      setIsSubmitting(true)
+  const handleGoogleLoginSuccess = async (credentialResponse: {
+    credential?: string
+  }) => {
+    const googleCredential = credentialResponse.credential
 
-      try {
-        const response = await fetch(buildBackendUrl('/api/user/accounts/google/'), {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            access_token: tokenResponse.access_token,
-          }),
-        })
-
-        const data = await response.json()
-
-        if (!response.ok) {
-          const errorMessage =
-            typeof data.detail === 'string'
-              ? data.detail
-              : typeof data.message === 'string'
-                ? data.message
-                : 'No se pudo iniciar sesion con Google.'
-
-          throw new Error(errorMessage)
-        }
-
-        resolveAuthSuccess(data)
-        setFeedback({
-          type: 'success',
-          message: 'Sesion iniciada correctamente con Google.',
-        })
-        window.location.href = '/profile'
-      } catch (error) {
-        setFeedback({
-          type: 'error',
-          message: error instanceof Error ? error.message : 'Ocurrio un error al iniciar sesion con Google.',
-        })
-      } finally {
-        setIsSubmitting(false)
-      }
-    },
-    onError: () => {
+    if (!googleCredential) {
       setFeedback({
         type: 'error',
-        message: 'No se pudo completar el acceso con Google.',
+        message: 'Google no devolvio una credencial valida.',
       })
-    },
-  })
-
-  const handleSocialLogin = (providerId: string) => {
-    if (providerId === 'google') {
-      googleLogin()
       return
     }
 
+    setFeedback(null)
+    setIsSubmitting(true)
+
+    try {
+      const response = await fetch(buildBackendUrl('/api/user/accounts/google/'), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          id_token: googleCredential,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        const errorMessage =
+          typeof data.detail === 'string'
+            ? data.detail
+            : typeof data.message === 'string'
+              ? data.message
+              : 'No se pudo iniciar sesion con Google.'
+
+        throw new Error(errorMessage)
+      }
+
+      resolveAuthSuccess(data)
+      setFeedback({
+        type: 'success',
+        message: 'Sesion iniciada correctamente con Google.',
+      })
+      window.location.href = '/profile'
+    } catch (error) {
+      setFeedback({
+        type: 'error',
+        message: error instanceof Error ? error.message : 'Ocurrio un error al iniciar sesion con Google.',
+      })
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleGoogleLoginError = () => {
     setFeedback({
       type: 'error',
-      message: 'Este proveedor todavia no esta disponible.',
+      message: 'No se pudo completar el acceso con Google.',
+    })
+  }
+
+  const handleSocialLogin = (providerId: string) => {
+    setFeedback({
+      type: 'error',
+      message: `${providerId === 'microsoft' ? 'Microsoft' : 'Meta/Facebook'} todavia no esta disponible.`,
     })
   }
 
@@ -202,10 +210,7 @@ const AuthForm = () => {
           throw new Error(errorMessage)
         }
 
-        saveAuthTokens({
-          access: typeof data.access === 'string' ? data.access : undefined,
-          refresh: typeof data.refresh === 'string' ? data.refresh : undefined,
-        })
+        resolveAuthSuccess(data)
         setFeedback({
           type: 'success',
           message: 'Sesion iniciada correctamente.',
@@ -277,7 +282,9 @@ const AuthForm = () => {
         message: 'Usuario creado correctamente.',
       })
       resetSignupFields()
-      localStorage.setItem('idUser', data.id)
+      if (typeof data.id === 'string' || typeof data.id === 'number') {
+        setStoredUserId(String(data.id))
+      }
       window.location.href = '/auth-code'  
     } catch (error) {
       setFeedback({
@@ -476,6 +483,31 @@ const AuthForm = () => {
             </div>
 
             <div className="grid gap-3 md:grid-cols-3">
+              {googleOriginError ? (
+                <div className="rounded-lg border border-dashed border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-foreground">
+                  <p className="font-semibold">Google no esta disponible en este origen.</p>
+                  <p className="mt-1 text-muted-foreground">
+                    {googleOriginError}
+                  </p>
+                  <p className="mt-2 text-muted-foreground">
+                    Agrega este origen en Google Cloud OAuth y, si usas el guard local, en
+                    <code> VITE_GOOGLE_ALLOWED_ORIGINS </code>.
+                  </p>
+                </div>
+              ) : (
+                <div className={isSubmitting ? 'pointer-events-none opacity-60' : ''}>
+                  <GoogleLogin
+                    onSuccess={handleGoogleLoginSuccess}
+                    onError={handleGoogleLoginError}
+                    text="continue_with"
+                    theme="outline"
+                    size="large"
+                    shape="rectangular"
+                    width="100%"
+                  />
+                </div>
+              )}
+
               {socialProviders.map((provider) => (
                 <button
                   key={provider.id}

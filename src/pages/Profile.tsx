@@ -3,6 +3,7 @@ import {
   ChartNoAxesColumn,
   CircleCheckBig,
   Clock3,
+  LogOut,
   Mail,
   Phone,
   ShieldCheck,
@@ -15,7 +16,7 @@ import {
   ProfileHeroCard,
   ProfileMetricCard,
 } from '@/components/profile/profile-sections'
-import { authFetch, clearAuthTokens, hasStoredSession } from '@/lib/auth'
+import { authFetch, clearAuthTokens, getStoredUserId, hasStoredSession } from '@/lib/auth'
 import { buildBackendUrl } from '@/lib/utils'
 import Footer from '@/components/ui/Footer'
 import { Reveal } from '@/components/ui/reveal'
@@ -77,7 +78,8 @@ const resolveMediaUrl = (value?: string | null) => {
 
 export default function Profile() {
   const [user, setUser] = useState<UserProfile | null>(null)
-  const userId = localStorage.getItem('idUser')
+  const [isLoggingOut, setIsLoggingOut] = useState(false)
+  const userId = getStoredUserId()
   const shortUserId = (user?.id || userId) ? `${(user?.id || userId)?.slice(0, 8)}...` : 'Sin ID'
   const profileImage = resolveMediaUrl(user?.profile_pic)
   const displayName = user?.username || 'Tu cuenta Mentras'
@@ -129,6 +131,12 @@ export default function Profile() {
     loadUser()
   }, [userId])
 
+  const handleLogout = () => {
+    setIsLoggingOut(true)
+    clearAuthTokens()
+    window.location.href = '/auth'
+  }
+
   return (
     <div className="flex min-h-screen flex-col">
       <main className="flex-1 px-6 pb-20 pt-8 sm:pt-10">
@@ -172,6 +180,16 @@ export default function Profile() {
                     <p className="mt-2 text-base font-semibold">{userRoles.length ? 'Revisar datos y permisos' : 'Completar datos basicos'}</p>
                   </div>
                 </div>
+
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  disabled={isLoggingOut}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm font-semibold text-foreground transition-colors hover:bg-destructive/15 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <LogOut className="size-4" />
+                  {isLoggingOut ? 'Cerrando sesion...' : 'Cerrar sesion'}
+                </button>
               </div>
             </ProfileHeroCard>
           </Reveal>

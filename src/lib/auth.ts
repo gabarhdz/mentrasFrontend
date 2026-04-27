@@ -3,6 +3,7 @@ import { buildBackendUrl } from '@/lib/utils'
 const ACCESS_TOKEN_KEY = 'mentras.access_token'
 const REFRESH_TOKEN_KEY = 'mentras.refresh_token'
 const LEGACY_ACCESS_TOKEN_KEY = 'jwt_token'
+const USER_ID_KEY = 'idUser'
 const EXPIRATION_BUFFER_SECONDS = 20
 
 let accessTokenCache: string | null = null
@@ -11,6 +12,25 @@ let refreshRequest: Promise<string | null> | null = null
 type AuthTokens = {
   access?: string
   refresh?: string
+}
+
+const resolveTokenUserId = (token: string) => {
+  const payload = decodeJwtPayload(token)
+
+  if (!payload || typeof payload !== 'object') {
+    return null
+  }
+
+  const candidate =
+    typeof payload.user_id === 'string' || typeof payload.user_id === 'number'
+      ? payload.user_id
+      : typeof payload.id === 'string' || typeof payload.id === 'number'
+        ? payload.id
+        : typeof payload.sub === 'string' || typeof payload.sub === 'number'
+          ? payload.sub
+          : null
+
+  return candidate === null ? null : String(candidate)
 }
 
 const decodeJwtPayload = (token: string) => {
@@ -54,6 +74,28 @@ export const getAccessToken = () => {
 
 export const getRefreshToken = () => localStorage.getItem(REFRESH_TOKEN_KEY)
 
+export const getStoredUserId = () => {
+  const storedUserId = localStorage.getItem(USER_ID_KEY)
+
+  if (storedUserId) {
+    return storedUserId
+  }
+
+  const token = getAccessToken()
+
+  if (!token) {
+    return null
+  }
+
+  const tokenUserId = resolveTokenUserId(token)
+
+  if (tokenUserId) {
+    localStorage.setItem(USER_ID_KEY, tokenUserId)
+  }
+
+  return tokenUserId
+}
+
 export const setAccessToken = (token: string) => {
   accessTokenCache = token
   sessionStorage.setItem(ACCESS_TOKEN_KEY, token)
@@ -63,9 +105,19 @@ export const setRefreshToken = (token: string) => {
   localStorage.setItem(REFRESH_TOKEN_KEY, token)
 }
 
+export const setStoredUserId = (userId: string) => {
+  localStorage.setItem(USER_ID_KEY, userId)
+}
+
 export const saveAuthTokens = ({ access, refresh }: AuthTokens) => {
   if (access) {
     setAccessToken(access)
+
+    const tokenUserId = resolveTokenUserId(access)
+
+    if (tokenUserId) {
+      setStoredUserId(tokenUserId)
+    }
   }
 
   if (refresh) {
@@ -73,11 +125,21 @@ export const saveAuthTokens = ({ access, refresh }: AuthTokens) => {
   }
 }
 
+export const replaceAuthTokens = ({ access, refresh }: AuthTokens) => {
+  accessTokenCache = null
+  sessionStorage.removeItem(ACCESS_TOKEN_KEY)
+  localStorage.removeItem(REFRESH_TOKEN_KEY)
+  localStorage.removeItem(LEGACY_ACCESS_TOKEN_KEY)
+
+  saveAuthTokens({ access, refresh })
+}
+
 export const clearAuthTokens = () => {
   accessTokenCache = null
   sessionStorage.removeItem(ACCESS_TOKEN_KEY)
   localStorage.removeItem(REFRESH_TOKEN_KEY)
   localStorage.removeItem(LEGACY_ACCESS_TOKEN_KEY)
+  localStorage.removeItem(USER_ID_KEY)
 }
 
 export const hasStoredSession = () => Boolean(getAccessToken() || getRefreshToken())
