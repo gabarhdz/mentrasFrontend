@@ -8,6 +8,8 @@ const Header = () => {
     { label: 'Aprendizaje', to: '/aprendizaje' },
     { label: 'Herramientas', to: '/herramientas' },
     { label: 'Dashboard', to: '/dashboard' },
+    {label: 'Blog', to: '/blog'},
+    {label: 'Configuración', to: '/settings  '}
   ]
 
   return (
