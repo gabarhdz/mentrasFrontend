@@ -52,12 +52,9 @@ const metrics = [
 
 const nextSteps = [
   'Revisar que tu correo y telefono esten correctos.',
-  'Completar la informacion de tu negocio si hace falta.',
-  'Agregar mas datos de contacto o configuracion cuando lo necesites.',
+  'Consultar a soporte si necesitas corregir informacion de tu cuenta.',
+  'Usar tus accesos actuales para continuar dentro de Mentras.',
 ]
-
-const inputClassName =
-  'mt-1 w-full rounded-xl border border-input bg-background px-4 py-3 text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20'
 
 type UserProfile = {
   id?: string
@@ -73,7 +70,6 @@ type UserProfile = {
 
 type ProfileFormState = {
   username: string
-  email: string
   phoneNumber: string
   isPymeOwner: boolean
 }
@@ -100,7 +96,6 @@ export default function Profile() {
   const [isLoggingOut, setIsLoggingOut] = useState(false)
   const [profileForm, setProfileForm] = useState<ProfileFormState>({
     username: '',
-    email: '',
     phoneNumber: '',
     isPymeOwner: false,
   })
@@ -149,7 +144,6 @@ export default function Profile() {
 
     setProfileForm({
       username: user.username || '',
-      email: user.email || '',
       phoneNumber: user.phone_number || '',
       isPymeOwner: Boolean(user.is_pyme_owner),
     })
@@ -287,13 +281,12 @@ export default function Profile() {
     }
 
     const username = profileForm.username.trim()
-    const email = profileForm.email.trim()
     const phoneNumber = profileForm.phoneNumber.trim()
 
-    if (!username || !email || !phoneNumber) {
+    if (!username || !phoneNumber) {
       setProfileFeedback({
         type: 'error',
-        message: 'Completa username, correo y telefono antes de guardar.',
+        message: 'Completa username y telefono antes de guardar.',
       })
       return
     }
@@ -308,7 +301,6 @@ export default function Profile() {
 
     const formData = new FormData()
     formData.append('username', username)
-    formData.append('email', email)
     formData.append('phone_number', phoneNumber)
     formData.append('is_pyme_owner', profileForm.isPymeOwner ? 'true' : 'false')
 
@@ -508,8 +500,8 @@ export default function Profile() {
             <Reveal>
               <SectionHeading
                 badge="Edicion"
-                title="Actualiza tu perfil"
-                description="Cambia tus datos visibles y sube una nueva foto cuando lo necesites."
+                title="Edita tu perfil"
+                description="Aqui solo aparecen los campos que todavia se pueden actualizar desde tu cuenta."
               />
             </Reveal>
 
@@ -517,8 +509,8 @@ export default function Profile() {
               <div className="mt-8">
                 <ProfileDetailCard
                   icon={PencilLine}
-                  title="Actualizar perfil"
-                  description="Los cambios se guardan directamente en tu cuenta autenticada."
+                  title="Campos editables"
+                  description="Puedes actualizar tu username, tu numero de telefono, tu foto de perfil y si tu cuenta corresponde a un dueno de pyme."
                 >
                   <form className="space-y-6" onSubmit={handleProfileSubmit}>
                     {profileFeedback ? (
@@ -544,13 +536,14 @@ export default function Profile() {
                         <input
                           id="profile-username"
                           type="text"
-                          className={inputClassName}
+                          className="mt-1 w-full rounded-xl border border-input bg-background px-4 py-3 text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                           value={profileForm.username}
                           onChange={(event) =>
                             handleProfileFieldChange('username', event.target.value)
                           }
                         />
                       </div>
+
                       <div>
                         <label
                           className="block text-sm font-medium text-muted-foreground"
@@ -561,7 +554,7 @@ export default function Profile() {
                         <input
                           id="profile-phone"
                           type="tel"
-                          className={inputClassName}
+                          className="mt-1 w-full rounded-xl border border-input bg-background px-4 py-3 text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                           value={profileForm.phoneNumber}
                           onChange={(event) =>
                             handleProfileFieldChange('phoneNumber', event.target.value)
@@ -569,7 +562,7 @@ export default function Profile() {
                         />
                       </div>
 
-                      <label className="flex items-center gap-3 rounded-2xl border border-input bg-background px-4 py-3 transition-colors hover:border-primary/40">
+                      <label className="flex items-center gap-3 rounded-2xl border border-input bg-background px-4 py-3 transition-colors hover:border-primary/40 md:col-span-2">
                         <input
                           type="checkbox"
                           className="h-4 w-4 rounded border-input text-primary focus:ring-2 focus:ring-primary/20"
@@ -596,8 +589,8 @@ export default function Profile() {
                             Foto de perfil
                           </p>
                           <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                            Sube una imagen nueva para reemplazar la actual. Formatos JPG, PNG o
-                            WEBP de hasta 5MB.
+                            Puedes reemplazar tu foto actual con una imagen JPG, PNG o WEBP de
+                            hasta 5MB.
                           </p>
                         </div>
                         <div className="inline-flex rounded-2xl bg-primary/10 p-3 text-primary">
@@ -638,7 +631,7 @@ export default function Profile() {
                               {profilePicFile ? 'Cambiar imagen seleccionada' : 'Seleccionar nueva imagen'}
                             </span>
                             <span className="mt-2 text-sm text-muted-foreground">
-                              Toca aqui para elegir una nueva foto desde tu dispositivo
+                              Elige una nueva foto desde tu dispositivo
                             </span>
                           </label>
 
@@ -669,7 +662,7 @@ export default function Profile() {
 
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                       <p className="text-sm text-muted-foreground">
-                        Tus cambios se reflejan al instante despues de guardar.
+                        Los cambios en username, telefono, foto y tipo de cuenta se aplican despues de guardar.
                       </p>
                       <button
                         type="submit"
@@ -702,9 +695,9 @@ export default function Profile() {
                   </div>
                   <div className="rounded-2xl border border-border/80 bg-[linear-gradient(135deg,color-mix(in_oklab,var(--secondary)_16%,white),white)] p-4 dark:bg-[linear-gradient(135deg,color-mix(in_oklab,var(--secondary)_14%,black),black)]">
                     <p className="text-sm font-medium text-secondary-foreground">Perfil</p>
-                    <p className="mt-2 text-lg font-semibold">Perfil en progreso</p>
+                    <p className="mt-2 text-lg font-semibold">Perfil disponible</p>
                     <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                      Aun puedes completar o actualizar algunos datos.
+                      Tu informacion actual permanece visible como referencia dentro de la cuenta.
                     </p>
                   </div>
                 </div>
