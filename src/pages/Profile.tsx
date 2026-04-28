@@ -1,10 +1,13 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import type { ChangeEvent, FormEvent } from 'react'
 import {
+  Camera,
   ChartNoAxesColumn,
   CircleCheckBig,
   Clock3,
   LogOut,
   Mail,
+  PencilLine,
   Phone,
   ShieldCheck,
   Sparkles,
@@ -21,6 +24,7 @@ import { buildBackendUrl } from '@/lib/utils'
 import Footer from '@/components/ui/Footer'
 import { Reveal } from '@/components/ui/reveal'
 import { SectionHeading } from '@/components/ui/section-heading'
+import Header from '@/components/ui/Header'
 
 const metrics = [
   {
@@ -48,8 +52,8 @@ const metrics = [
 
 const nextSteps = [
   'Revisar que tu correo y telefono esten correctos.',
-  'Completar la informacion de tu negocio si hace falta.',
-  'Agregar mas datos de contacto o configuracion cuando lo necesites.',
+  'Consultar a soporte si necesitas corregir informacion de tu cuenta.',
+  'Usar tus accesos actuales para continuar dentro de Mentras.',
 ]
 
 type UserProfile = {
@@ -62,6 +66,17 @@ type UserProfile = {
   is_admin?: boolean
   is_mentor?: boolean
   is_pyme_owner?: boolean
+}
+
+type ProfileFormState = {
+  username: string
+  phoneNumber: string
+  isPymeOwner: boolean
+}
+
+type FeedbackState = {
+  type: 'success' | 'error'
+  message: string
 }
 
 const resolveMediaUrl = (value?: string | null) => {
@@ -79,9 +94,20 @@ const resolveMediaUrl = (value?: string | null) => {
 export default function Profile() {
   const [user, setUser] = useState<UserProfile | null>(null)
   const [isLoggingOut, setIsLoggingOut] = useState(false)
+  const [profileForm, setProfileForm] = useState<ProfileFormState>({
+    username: '',
+    phoneNumber: '',
+    isPymeOwner: false,
+  })
+  const [profilePicFile, setProfilePicFile] = useState<File | null>(null)
+  const [profilePreviewUrl, setProfilePreviewUrl] = useState<string | null>(null)
+  const [isSavingProfile, setIsSavingProfile] = useState(false)
+  const [profileFeedback, setProfileFeedback] = useState<FeedbackState | null>(null)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
   const userId = getStoredUserId()
   const shortUserId = (user?.id || userId) ? `${(user?.id || userId)?.slice(0, 8)}...` : 'Sin ID'
   const profileImage = resolveMediaUrl(user?.profile_pic)
+  const profileFormPreview = profilePreviewUrl || profileImage
   const displayName = user?.username || 'Tu cuenta Mentras'
   const initials = displayName.slice(0, 2).toUpperCase()
   const userRoles = [
@@ -96,6 +122,38 @@ export default function Profile() {
     userRoles.length ? userRoles.join(' • ') : 'Sin roles especiales',
     'Perfil disponible',
   ]
+
+  useEffect(() => {
+    if (!profilePicFile) {
+      setProfilePreviewUrl(null)
+      return
+    }
+
+    const objectUrl = URL.createObjectURL(profilePicFile)
+    setProfilePreviewUrl(objectUrl)
+
+    return () => {
+      URL.revokeObjectURL(objectUrl)
+    }
+  }, [profilePicFile])
+
+  useEffect(() => {
+    if (!user) {
+      return
+    }
+
+    setProfileForm({
+      username: user.username || '',
+      phoneNumber: user.phone_number || '',
+      isPymeOwner: Boolean(user.is_pyme_owner),
+    })
+    setProfilePicFile(null)
+    setProfileFeedback(null)
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }, [user])
 
   useEffect(() => {
     if (!hasStoredSession()) {
@@ -131,14 +189,166 @@ export default function Profile() {
     loadUser()
   }, [userId])
 
+  const getResponseErrorMessage = async (response: Response, fallbackMessage: string) => {
+    try {
+      const data = await response.json()
+
+      if (typeof data.detail === 'string') {
+        return data.detail
+      }
+
+      if (typeof data.message === 'string') {
+        return data.message
+      }
+
+      if (typeof data.error === 'string') {
+        return data.error
+      }
+
+      if (data && typeof data === 'object') {
+        const firstEntry = Object.entries(data)[0]
+
+        if (firstEntry) {
+          const [, value] = firstEntry
+
+          if (Array.isArray(value) && typeof value[0] === 'string') {
+            return value[0]
+          }
+
+          if (typeof value === 'string') {
+            return value
+          }
+        }
+      }
+
+      return fallbackMessage
+    } catch {
+      return fallbackMessage
+    }
+  }
+
   const handleLogout = () => {
     setIsLoggingOut(true)
     clearAuthTokens()
     window.location.href = '/auth'
   }
 
+  const handleProfileFieldChange = (
+    field: keyof ProfileFormState,
+    value: string | boolean,
+  ) => {
+    setProfileForm((currentForm) => ({
+      ...currentForm,
+      [field]: value,
+    }))
+  }
+
+  const handleProfilePicChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] ?? null
+    const maxFileSize = 5 * 1024 * 1024
+
+    if (file && file.size > maxFileSize) {
+      setProfileFeedback({
+        type: 'error',
+        message: 'La imagen es demasiado grande. Elige una menor de 5MB.',
+      })
+      event.target.value = ''
+      setProfilePicFile(null)
+      return
+    }
+
+    setProfileFeedback(null)
+    setProfilePicFile(file)
+  }
+
+  const clearSelectedProfilePic = () => {
+    setProfilePicFile(null)
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }
+
+  const handleProfileSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+
+    if (!userId) {
+      setProfileFeedback({
+        type: 'error',
+        message: 'No encontramos tu usuario para actualizar el perfil.',
+      })
+      return
+    }
+
+    const username = profileForm.username.trim()
+    const phoneNumber = profileForm.phoneNumber.trim()
+
+    if (!username || !phoneNumber) {
+      setProfileFeedback({
+        type: 'error',
+        message: 'Completa username y telefono antes de guardar.',
+      })
+      return
+    }
+
+    if (!/^\d+$/.test(phoneNumber)) {
+      setProfileFeedback({
+        type: 'error',
+        message: 'El telefono debe contener solo numeros.',
+      })
+      return
+    }
+
+    const formData = new FormData()
+    formData.append('username', username)
+    formData.append('phone_number', phoneNumber)
+    formData.append('is_pyme_owner', profileForm.isPymeOwner ? 'true' : 'false')
+
+    if (profilePicFile) {
+      formData.append('profile_pic', profilePicFile)
+    }
+
+    setIsSavingProfile(true)
+    setProfileFeedback(null)
+
+    try {
+      const response = await authFetch(buildBackendUrl(`/api/user/${userId}/`), {
+        method: 'PATCH',
+        body: formData,
+      })
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          clearAuthTokens()
+          window.location.href = '/auth'
+          return
+        }
+
+        throw new Error(
+          await getResponseErrorMessage(response, 'No se pudo actualizar el perfil.'),
+        )
+      }
+
+      const updatedUser = (await response.json()) as UserProfile
+      setUser(updatedUser)
+      setProfileFeedback({
+        type: 'success',
+        message: 'Perfil actualizado correctamente.',
+      })
+    } catch (error) {
+      setProfileFeedback({
+        type: 'error',
+        message:
+          error instanceof Error ? error.message : 'Ocurrio un error al actualizar el perfil.',
+      })
+    } finally {
+      setIsSavingProfile(false)
+    }
+  }
+
   return (
     <div className="flex min-h-screen flex-col">
+      <Header />
       <main className="flex-1 px-6 pb-20 pt-8 sm:pt-10">
         <div className="mx-auto max-w-6xl space-y-8">
           <Reveal>
@@ -219,14 +429,14 @@ export default function Profile() {
                   description="Datos basicos de tu cuenta."
                 >
                   <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-2xl bg-background p-4">
-                    <p className="text-sm font-medium text-muted-foreground">Nombre visible</p>
-                    <p className="mt-2 text-base font-semibold">{displayName}</p>
-                  </div>
-                  <div className="rounded-2xl bg-background p-4">
-                    <p className="text-sm font-medium text-muted-foreground">Rol</p>
-                    <p className="mt-2 text-base font-semibold">{roleLabel}</p>
-                  </div>
+                    <div className="rounded-2xl bg-background p-4">
+                      <p className="text-sm font-medium text-muted-foreground">Nombre visible</p>
+                      <p className="mt-2 text-base font-semibold">{displayName}</p>
+                    </div>
+                    <div className="rounded-2xl bg-background p-4">
+                      <p className="text-sm font-medium text-muted-foreground">Rol</p>
+                      <p className="mt-2 text-base font-semibold">{roleLabel}</p>
+                    </div>
                     <div className="rounded-2xl bg-background p-4">
                       <div className="flex items-center gap-2 text-muted-foreground">
                         <Mail className="size-4" />
@@ -286,6 +496,188 @@ export default function Profile() {
             </div>
           </section>
 
+          <section className="pt-4">
+            <Reveal>
+              <SectionHeading
+                badge="Edicion"
+                title="Edita tu perfil"
+                description="Aqui solo aparecen los campos que todavia se pueden actualizar desde tu cuenta."
+              />
+            </Reveal>
+
+            <Reveal delay={0.08}>
+              <div className="mt-8">
+                <ProfileDetailCard
+                  icon={PencilLine}
+                  title="Campos editables"
+                  description="Puedes actualizar tu username, tu numero de telefono, tu foto de perfil y si tu cuenta corresponde a un dueno de pyme."
+                >
+                  <form className="space-y-6" onSubmit={handleProfileSubmit}>
+                    {profileFeedback ? (
+                      <div
+                        className={`rounded-2xl border px-4 py-3 text-sm ${
+                          profileFeedback.type === 'success'
+                            ? 'border-primary/30 bg-primary/10 text-foreground'
+                            : 'border-destructive/30 bg-destructive/10 text-foreground'
+                        }`}
+                      >
+                        {profileFeedback.message}
+                      </div>
+                    ) : null}
+
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div>
+                        <label
+                          className="block text-sm font-medium text-muted-foreground"
+                          htmlFor="profile-username"
+                        >
+                          Username
+                        </label>
+                        <input
+                          id="profile-username"
+                          type="text"
+                          className="mt-1 w-full rounded-xl border border-input bg-background px-4 py-3 text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                          value={profileForm.username}
+                          onChange={(event) =>
+                            handleProfileFieldChange('username', event.target.value)
+                          }
+                        />
+                      </div>
+
+                      <div>
+                        <label
+                          className="block text-sm font-medium text-muted-foreground"
+                          htmlFor="profile-phone"
+                        >
+                          Telefono
+                        </label>
+                        <input
+                          id="profile-phone"
+                          type="tel"
+                          className="mt-1 w-full rounded-xl border border-input bg-background px-4 py-3 text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                          value={profileForm.phoneNumber}
+                          onChange={(event) =>
+                            handleProfileFieldChange('phoneNumber', event.target.value)
+                          }
+                        />
+                      </div>
+
+                      <label className="flex items-center gap-3 rounded-2xl border border-input bg-background px-4 py-3 transition-colors hover:border-primary/40 md:col-span-2">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 rounded border-input text-primary focus:ring-2 focus:ring-primary/20"
+                          checked={profileForm.isPymeOwner}
+                          onChange={(event) =>
+                            handleProfileFieldChange('isPymeOwner', event.target.checked)
+                          }
+                        />
+                        <span>
+                          <span className="block text-sm font-medium text-foreground">
+                            Soy dueno de una pyme
+                          </span>
+                          <span className="block text-sm text-muted-foreground">
+                            Esto actualiza el tipo de perfil asociado a tu cuenta.
+                          </span>
+                        </span>
+                      </label>
+                    </div>
+
+                    <div className="rounded-[1.5rem] border border-dashed border-primary/35 bg-background/80 p-4">
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <p className="text-sm font-medium text-muted-foreground">
+                            Foto de perfil
+                          </p>
+                          <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                            Puedes reemplazar tu foto actual con una imagen JPG, PNG o WEBP de
+                            hasta 5MB.
+                          </p>
+                        </div>
+                        <div className="inline-flex rounded-2xl bg-primary/10 p-3 text-primary">
+                          <Camera className="size-5" />
+                        </div>
+                      </div>
+
+                      <div className="mt-4 grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
+                        <div className="rounded-2xl border border-border bg-card p-4">
+                          {profileFormPreview ? (
+                            <img
+                              src={profileFormPreview}
+                              alt={`Vista previa de ${displayName}`}
+                              className="h-48 w-full rounded-xl object-cover ring-1 ring-border"
+                            />
+                          ) : (
+                            <div className="flex h-48 w-full items-center justify-center rounded-xl bg-muted text-sm font-medium text-muted-foreground">
+                              Todavia no tienes foto de perfil.
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="space-y-4">
+                          <input
+                            ref={fileInputRef}
+                            id="profile-pic-update"
+                            type="file"
+                            accept="image/*"
+                            className="sr-only"
+                            onChange={handleProfilePicChange}
+                          />
+
+                          <label
+                            htmlFor="profile-pic-update"
+                            className="flex min-h-32 cursor-pointer flex-col items-center justify-center rounded-2xl border border-input bg-card px-4 py-5 text-center transition-colors hover:border-primary/50 hover:bg-muted/40"
+                          >
+                            <span className="text-sm font-semibold text-foreground">
+                              {profilePicFile ? 'Cambiar imagen seleccionada' : 'Seleccionar nueva imagen'}
+                            </span>
+                            <span className="mt-2 text-sm text-muted-foreground">
+                              Elige una nueva foto desde tu dispositivo
+                            </span>
+                          </label>
+
+                          {profilePicFile ? (
+                            <div className="rounded-2xl border border-border bg-card p-4">
+                              <p className="truncate text-sm font-semibold text-foreground">
+                                {profilePicFile.name}
+                              </p>
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                {(profilePicFile.size / 1024 / 1024).toFixed(2)} MB
+                              </p>
+                              <button
+                                type="button"
+                                onClick={clearSelectedProfilePic}
+                                className="mt-3 rounded-xl border border-border px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+                              >
+                                Quitar imagen nueva
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="rounded-2xl border border-border/70 bg-card/70 p-4 text-sm text-muted-foreground">
+                              Si no eliges una imagen nueva, se conserva la foto actual.
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <p className="text-sm text-muted-foreground">
+                        Los cambios en username, telefono, foto y tipo de cuenta se aplican despues de guardar.
+                      </p>
+                      <button
+                        type="submit"
+                        disabled={isSavingProfile}
+                        className="inline-flex items-center justify-center rounded-2xl bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground transition-transform duration-300 hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {isSavingProfile ? 'Guardando cambios...' : 'Guardar cambios'}
+                      </button>
+                    </div>
+                  </form>
+                </ProfileDetailCard>
+              </div>
+            </Reveal>
+          </section>
+
           <section>
             <Reveal delay={0.1}>
               <ProfileDetailCard
@@ -303,9 +695,9 @@ export default function Profile() {
                   </div>
                   <div className="rounded-2xl border border-border/80 bg-[linear-gradient(135deg,color-mix(in_oklab,var(--secondary)_16%,white),white)] p-4 dark:bg-[linear-gradient(135deg,color-mix(in_oklab,var(--secondary)_14%,black),black)]">
                     <p className="text-sm font-medium text-secondary-foreground">Perfil</p>
-                    <p className="mt-2 text-lg font-semibold">Perfil en progreso</p>
+                    <p className="mt-2 text-lg font-semibold">Perfil disponible</p>
                     <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                      Aun puedes completar o actualizar algunos datos.
+                      Tu informacion actual permanece visible como referencia dentro de la cuenta.
                     </p>
                   </div>
                 </div>
