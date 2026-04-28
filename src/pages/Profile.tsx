@@ -24,6 +24,7 @@ import { buildBackendUrl } from '@/lib/utils'
 import Footer from '@/components/ui/Footer'
 import { Reveal } from '@/components/ui/reveal'
 import { SectionHeading } from '@/components/ui/section-heading'
+import Header from '@/components/ui/Header'
 
 const metrics = [
   {
@@ -355,6 +356,7 @@ export default function Profile() {
 
   return (
     <div className="flex min-h-screen flex-col">
+      <Header />
       <main className="flex-1 px-6 pb-20 pt-8 sm:pt-10">
         <div className="mx-auto max-w-6xl space-y-8">
           <Reveal>
