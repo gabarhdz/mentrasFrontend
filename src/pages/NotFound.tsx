@@ -42,14 +42,7 @@ export default function NotFound() {
   }, [isDark]);
 
   return (
-    <main className="relative isolate min-h-screen overflow-hidden bg-background text-foreground">
-      <div aria-hidden="true" className="pointer-events-none absolute inset-0">
-        <div className="absolute left-[6%] top-[8%] h-72 w-72 rounded-full bg-secondary/18 blur-3xl dark:bg-secondary/16" />
-        <div className="absolute right-[4%] top-[14%] h-80 w-80 rounded-full bg-primary/20 blur-3xl dark:bg-primary/18" />
-        <div className="absolute bottom-[10%] left-[28%] h-64 w-64 rounded-full bg-accent/12 blur-3xl dark:bg-accent/10" />
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_color-mix(in_oklab,var(--secondary)_18%,transparent),transparent_34%),radial-gradient(circle_at_85%_0%,_color-mix(in_oklab,var(--primary)_20%,transparent),transparent_30%),linear-gradient(to_bottom,_color-mix(in_oklab,var(--background)_65%,transparent),var(--background)_92%)]" />
-      </div>
-
+    <main className="relative isolate min-h-screen overflow-hidden text-foreground">
       <div className="relative z-10 px-6 pb-12 pt-6 sm:pb-16 sm:pt-10">
         <div className="mx-auto max-w-6xl">
           <div className="flex items-center justify-between gap-4">
