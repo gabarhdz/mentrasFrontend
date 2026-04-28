@@ -1,12 +1,5 @@
-import React from 'react'
-import Header from '@/components/ui/Header'
-const Blog = () => {
-  return (
-    <div>
-      <Header />
-      <h1>Blog</h1>
-    </div>
-  )
-}
+import StaticPageShell from '@/components/ui/StaticPageShell'
 
-export default Blog
+export default function Blog() {
+  return <StaticPageShell eyebrow="Recursos" title="Blog" />
+}

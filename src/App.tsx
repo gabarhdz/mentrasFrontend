@@ -10,6 +10,9 @@ import Herramientas from "./pages/Herramientas";
 import Dashboard from "./pages/Dashboard";
 import Blog from "./pages/Blog";
 import Settings from "./pages/Settings";
+import Contacto from "./pages/Contacto";
+import Privacidad from "./pages/Privacidad";
+import Terminos from "./pages/Terminos";
 
 import { SiteBackground } from "@/components/ui/site-background";
 
@@ -29,6 +32,9 @@ export default function App() {
           <Route path="/herramientas" element={<Herramientas />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/blog" element={<Blog />} />
+          <Route path="/contacto" element={<Contacto />} />
+          <Route path="/privacidad" element={<Privacidad />} />
+          <Route path="/terminos" element={<Terminos />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
