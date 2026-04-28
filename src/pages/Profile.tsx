@@ -551,25 +551,6 @@ export default function Profile() {
                           }
                         />
                       </div>
-
-                      <div>
-                        <label
-                          className="block text-sm font-medium text-muted-foreground"
-                          htmlFor="profile-email"
-                        >
-                          Correo
-                        </label>
-                        <input
-                          id="profile-email"
-                          type="email"
-                          className={inputClassName}
-                          value={profileForm.email}
-                          onChange={(event) =>
-                            handleProfileFieldChange('email', event.target.value)
-                          }
-                        />
-                      </div>
-
                       <div>
                         <label
                           className="block text-sm font-medium text-muted-foreground"
