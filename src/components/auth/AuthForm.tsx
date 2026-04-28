@@ -90,19 +90,58 @@ const AuthForm = () => {
       })
 
       const data = await response.json()
-
-      if (!response.ok) {
-        const errorMessage =
-          typeof data.detail === 'string'
-            ? data.detail
-            : typeof data.message === 'string'
-              ? data.message
-              : 'No se pudo iniciar sesion con Google.'
-
-        throw new Error(errorMessage)
+      const googleAuthData = data as {
+        error?: unknown
+        tokens?: {
+          access?: unknown
+          refresh?: unknown
+        }
+        user?: {
+          id?: unknown
+        }
       }
 
-      resolveAuthSuccess(data)
+      if (!response.ok) {
+        throw new Error(
+          typeof googleAuthData.error === 'string'
+            ? googleAuthData.error
+            : 'No se pudo iniciar sesion con Google.',
+        )
+      }
+
+      const accessToken =
+        typeof googleAuthData.tokens?.access === 'string'
+          ? googleAuthData.tokens.access
+          : undefined
+      const refreshToken =
+        typeof googleAuthData.tokens?.refresh === 'string'
+          ? googleAuthData.tokens.refresh
+          : undefined
+
+      replaceAuthTokens({
+        access: accessToken,
+        refresh: refreshToken,
+      })
+
+      if (accessToken) {
+        localStorage.setItem('access_token', accessToken)
+      }
+
+      if (refreshToken) {
+        localStorage.setItem('refresh_token', refreshToken)
+      }
+
+      if (googleAuthData.user) {
+        localStorage.setItem('user', JSON.stringify(googleAuthData.user))
+      }
+
+      if (
+        typeof googleAuthData.user?.id === 'string' ||
+        typeof googleAuthData.user?.id === 'number'
+      ) {
+        setStoredUserId(String(googleAuthData.user.id))
+      }
+
       setFeedback({
         type: 'success',
         message: 'Sesion iniciada correctamente con Google.',
@@ -116,13 +155,6 @@ const AuthForm = () => {
     } finally {
       setIsSubmitting(false)
     }
-  }
-
-  const handleGoogleLoginError = () => {
-    setFeedback({
-      type: 'error',
-      message: 'No se pudo completar el acceso con Google.',
-    })
   }
 
   const handleSocialLogin = (providerId: string) => {
@@ -498,7 +530,12 @@ const AuthForm = () => {
                 <div className={isSubmitting ? 'pointer-events-none opacity-60' : ''}>
                   <GoogleLogin
                     onSuccess={handleGoogleLoginSuccess}
-                    onError={handleGoogleLoginError}
+                    onError={() => {
+                      setFeedback({
+                        type: 'error',
+                        message: 'No se pudo iniciar sesion con Google.',
+                      })
+                    }}
                     text="continue_with"
                     theme="outline"
                     size="large"
