@@ -54,7 +54,6 @@ const PymeFeatures = () => {
               <div className="inline-flex shrink-0 rounded-xl bg-primary/10 p-2.5 text-primary">
                 <Icon className="size-4" />
               </div>
-
               <div className="min-w-0">
                 <h3 className="text-base font-semibold leading-6 tracking-tight">
                   {title}
