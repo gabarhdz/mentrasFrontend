@@ -650,7 +650,7 @@ const PymeDashboard = () => {
         <SectionHeading
           badge="Dashboard"
           title="Vista rapida de tus pymes"
-          description="Aqui veras si ya tienes pymes registradas. Si existen, mostramos las primeras tres para que tengas una referencia rapida."
+          description="Aqui veras las pymes que tú creaste"
         />
       </Reveal>
 
