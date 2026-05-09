@@ -1,12 +1,19 @@
 import Header from '@/components/ui/Header'
-
+import TitleCard from '@/components/pymes/title-card'
+import Footer from '@/components/ui/Footer'
+import PymeFeatures from '@/components/pymes/pyme-features'
+import PymeDashboard from '@/components/pymes/pyme-dashboard'
 export default function Pymes() {
   return (
-    <main className="relative min-h-screen text-foreground">
-      <Header />
-      <section className="px-6 py-16 md:px-12 lg:px-24 xl:px-40">
-        <h1 className="text-4xl font-semibold tracking-tight">Pymes</h1>
-      </section>
+    <>
+    <Header />
+    <main className="relative min-h-screen text-foreground"> 
+      <TitleCard />
+      <PymeFeatures />
+      <PymeDashboard />
     </main>
+    <Footer />
+    </>
+    
   )
 }
