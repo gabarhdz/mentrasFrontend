@@ -645,6 +645,8 @@ const PymeDashboard = () => {
   )
 
   return (
+    
+    <>
     <section className="mx-auto w-full max-w-5xl px-6 pb-16 md:px-8 md:pb-20">
       <Reveal>
         <SectionHeading
@@ -725,14 +727,18 @@ const PymeDashboard = () => {
                 return (
                   <Reveal key={String(pyme.id ?? name)} delay={0.06 * (index + 1)}>
                     <article className="h-full rounded-3xl border border-border/80 bg-card p-6 shadow-sm transition-transform duration-200 hover:-translate-y-1">
+                      <div className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold tracking-tight text-emerald-700">
+                        Eres dueño
+                      </div>
+
                       {profilePicture ? (
                         <img
                           src={profilePicture}
                           alt={name}
-                          className="h-48 w-48 rounded-2xl object-cover ring-1 ring-border"
+                          className="mt-4 h-48 w-48 rounded-2xl object-cover ring-1 ring-border"
                         />
                       ) : (
-                        <div className="inline-flex rounded-2xl bg-primary/10 p-3 text-primary">
+                        <div className="mt-4 inline-flex rounded-2xl bg-primary/10 p-3 text-primary">
                           <Building2 className="size-5" />
                         </div>
                       )}
@@ -766,7 +772,18 @@ const PymeDashboard = () => {
           </>
         )}
       </div>
+      
     </section>
+    <section className="mx-auto w-full max-w-5xl px-6 pb-16 md:px-8 md:pb-20">
+      <Reveal>
+        <SectionHeading
+          badge="Pymes del usuario"
+          title="Pymes de las que sos socio"
+          description="Aqui veras las pymes para las que trabajas o eres socio"
+        />
+      </Reveal>
+    </section>
+    </>
   )
 }
 
