@@ -3,7 +3,7 @@ import { Building2, ChevronDown, CircleAlert, LoaderCircle, PlusCircle } from 'l
 
 import { Reveal } from '@/components/ui/reveal'
 import { SectionHeading } from '@/components/ui/section-heading'
-import { authFetch, clearAuthTokens, hasStoredSession } from '@/lib/auth'
+import { authFetch, clearAuthTokens, getStoredUserId, hasStoredSession } from '@/lib/auth'
 import { buildBackendUrl } from '@/lib/utils'
 
 type PymeCategory = {
@@ -17,6 +17,7 @@ type PymeRecord = {
   name: string
   description: string
   owner?: string | number | null
+  employees?: unknown
   category?: PymeCategory | string | null
   profile_pic?: string
   access_date?: string
@@ -180,6 +181,34 @@ const getPymeTags = (pyme: PymeRecord) =>
     pyme.access_date ? `Entro a Mentras:${formatDate(pyme.access_date)}` : null,
   ].filter((value): value is string => Boolean(value))
 
+const resolveComparableId = (value: unknown) => {
+  if (typeof value === 'string' || typeof value === 'number') {
+    return String(value)
+  }
+
+  if (!isRecord(value)) {
+    return null
+  }
+
+  const candidate = value.id ?? value.user_id ?? value.pk ?? value.employee_id
+
+  if (typeof candidate === 'string' || typeof candidate === 'number') {
+    return String(candidate)
+  }
+
+  return null
+}
+
+const isEmployeeOfPyme = (pyme: PymeRecord, userId: string) => {
+  if (!Array.isArray(pyme.employees)) {
+    return false
+  }
+
+  return pyme.employees.some((employee) => resolveComparableId(employee) === userId)
+}
+
+const getEmployeeCount = (pyme: PymeRecord) => (Array.isArray(pyme.employees) ? pyme.employees.length : 0)
+
 const getResponseErrorMessage = async (response: Response, fallbackMessage: string) => {
   try {
     const data = await response.json()
@@ -220,12 +249,16 @@ const getResponseErrorMessage = async (response: Response, fallbackMessage: stri
 
 const PymeDashboard = () => {
   const [pymes, setPymes] = useState<PymeRecord[]>([])
+  const [employeePymes, setEmployeePymes] = useState<PymeRecord[]>([])
   const [categories, setCategories] = useState<PymeCategory[]>([])
   const [totalPymes, setTotalPymes] = useState(0)
+  const [totalEmployeePymes, setTotalEmployeePymes] = useState(0)
   const [isLoading, setIsLoading] = useState(true)
+  const [isLoadingEmployeePymes, setIsLoadingEmployeePymes] = useState(true)
   const [isLoadingCategories, setIsLoadingCategories] = useState(false)
   const [hasRequestedCategories, setHasRequestedCategories] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [employeePymesErrorMessage, setEmployeePymesErrorMessage] = useState<string | null>(null)
   const [categoriesErrorMessage, setCategoriesErrorMessage] = useState<string | null>(null)
   const [isCreateMenuOpen, setIsCreateMenuOpen] = useState(false)
   const [isCreatingPyme, setIsCreatingPyme] = useState(false)
@@ -281,6 +314,66 @@ const PymeDashboard = () => {
     }
 
     loadPymes()
+  }, [])
+
+  useEffect(() => {
+    const loadEmployeePymes = async () => {
+      if (!hasStoredSession()) {
+        setEmployeePymesErrorMessage(
+          'Inicia sesion para ver las pymes donde formas parte del equipo.',
+        )
+        setIsLoadingEmployeePymes(false)
+        return
+      }
+
+      const userId = getStoredUserId()
+      
+      if (!userId) {
+        setEmployeePymesErrorMessage(
+          'No pudimos identificar tu cuenta para filtrar las pymes donde trabajas.',
+        )
+        setIsLoadingEmployeePymes(false)
+        return
+      }
+
+      try {
+        const response = await authFetch(buildBackendUrl('/api/pyme/'))
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            clearAuthTokens()
+            setEmployeePymesErrorMessage(
+              'Tu sesion vencio. Inicia sesion de nuevo para consultar las pymes de tu equipo.',
+            )
+            return
+          }
+
+          throw new Error(
+            `No se pudieron cargar las pymes en las que participas. Codigo ${response.status}.`,
+          )
+        }
+
+        const data = await response.json()
+        const normalizedResponse = normalizePymesResponse(data)
+        const filteredEmployeePymes = normalizedResponse.items.filter((pyme) =>
+          isEmployeeOfPyme(pyme, userId),
+        )
+
+        setEmployeePymes(filteredEmployeePymes)
+        setTotalEmployeePymes(filteredEmployeePymes.length)
+        setEmployeePymesErrorMessage(null)
+      } catch (error) {
+        setEmployeePymesErrorMessage(
+          error instanceof Error
+            ? error.message
+            : 'Ocurrio un error al cargar las pymes donde participas.',
+        )
+      } finally {
+        setIsLoadingEmployeePymes(false)
+      }
+    }
+
+    void loadEmployeePymes()
   }, [])
 
   useEffect(() => {
@@ -722,6 +815,7 @@ const PymeDashboard = () => {
                 const name = getPymeName(pyme, index)
                 const description = getPymeDescription(pyme)
                 const tags = getPymeTags(pyme)
+                const employeeCount = getEmployeeCount(pyme)
                 const profilePicture = typeof pyme.profile_pic === 'string' ? pyme.profile_pic : ''
 
                 return (
@@ -749,6 +843,11 @@ const PymeDashboard = () => {
                       </p>
 
                       <div className="mt-5 flex flex-wrap gap-2">
+                        {employeeCount > 0 ? (
+                          <span className="rounded-full bg-background px-3 py-1 text-xs font-medium text-foreground/80 ring-1 ring-border">
+                            {employeeCount} {employeeCount === 1 ? 'empleado' : 'empleados'}
+                          </span>
+                        ) : null}
                         {tags.length > 0 ? (
                           tags.map((tag) => (
                             <span
@@ -782,6 +881,122 @@ const PymeDashboard = () => {
           description="Aqui veras las pymes para las que trabajas o eres socio"
         />
       </Reveal>
+
+      <div className="mt-8">
+        {isLoadingEmployeePymes ? (
+          <div className="grid gap-4 md:grid-cols-3">
+            {[0, 1, 2].map((item) => (
+              <div
+                key={item}
+                className="h-48 animate-pulse rounded-3xl border border-border/70 bg-card/70"
+              />
+            ))}
+          </div>
+        ) : employeePymesErrorMessage ? (
+          <Reveal>
+            <div className="rounded-3xl border border-destructive/20 bg-card p-6 shadow-sm">
+              <div className="flex items-start gap-3">
+                <div className="rounded-2xl bg-destructive/10 p-3 text-destructive">
+                  <CircleAlert className="size-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold tracking-tight">
+                    No pudimos cargar las pymes de tu equipo
+                  </h3>
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                    {employeePymesErrorMessage}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </Reveal>
+        ) : employeePymes.length === 0 ? (
+          <Reveal>
+            <div className="rounded-3xl border border-border/80 bg-card p-8 shadow-sm">
+              <div className="max-w-2xl">
+                <div className="inline-flex rounded-2xl bg-primary/10 p-3 text-primary">
+                  <Building2 className="size-5" />
+                </div>
+                <h3 className="mt-4 text-xl font-semibold tracking-tight">
+                  Aun no perteneces a ninguna pyme como empleado
+                </h3>
+                <p className="mt-3 text-sm leading-6 text-muted-foreground sm:text-base">
+                  Cuando una pyme te agregue dentro de su lista de empleados, aparecera aqui de
+                  forma automatica.
+                </p>
+              </div>
+            </div>
+          </Reveal>
+        ) : (
+          <>
+            <Reveal>
+              <p className="mb-4 text-sm text-muted-foreground">
+                Mostrando {employeePymes.length} de {totalEmployeePymes}{' '}
+                {totalEmployeePymes === 1 ? 'pyme' : 'pymes'} de tu equipo.
+              </p>
+            </Reveal>
+
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {employeePymes.map((pyme, index) => {
+                const name = getPymeName(pyme, index)
+                const description = getPymeDescription(pyme)
+                const tags = getPymeTags(pyme)
+                const employeeCount = getEmployeeCount(pyme)
+                const profilePicture = typeof pyme.profile_pic === 'string' ? pyme.profile_pic : ''
+
+                return (
+                  <Reveal key={`employee-${String(pyme.id ?? name)}`} delay={0.06 * (index + 1)}>
+                    <article className="h-full rounded-3xl border border-border/80 bg-card p-6 shadow-sm transition-transform duration-200 hover:-translate-y-1">
+                      <div className="inline-flex rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-semibold tracking-tight text-sky-700">
+                        Eres empleado
+                      </div>
+
+                      {profilePicture ? (
+                        <img
+                          src={profilePicture}
+                          alt={name}
+                          className="mt-4 h-48 w-48 rounded-2xl object-cover ring-1 ring-border"
+                        />
+                      ) : (
+                        <div className="mt-4 inline-flex rounded-2xl bg-primary/10 p-3 text-primary">
+                          <Building2 className="size-5" />
+                        </div>
+                      )}
+
+                      <h3 className="mt-4 text-lg font-semibold tracking-tight">{name}</h3>
+                      <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                        {description}
+                      </p>
+
+                      <div className="mt-5 flex flex-wrap gap-2">
+                        {employeeCount > 0 ? (
+                          <span className="rounded-full bg-background px-3 py-1 text-xs font-medium text-foreground/80 ring-1 ring-border">
+                            {employeeCount} {employeeCount === 1 ? 'empleado' : 'empleados'}
+                          </span>
+                        ) : null}
+                        {tags.length > 0 ? (
+                          tags.map((tag) => (
+                            <span
+                              key={tag}
+                              className="rounded-full bg-background px-3 py-1 text-xs font-medium text-foreground/80 ring-1 ring-border"
+                            >
+                              {tag}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="rounded-full bg-background px-3 py-1 text-xs font-medium text-foreground/80 ring-1 ring-border">
+                            Formas parte del equipo de esta pyme
+                          </span>
+                        )}
+                      </div>
+                    </article>
+                  </Reveal>
+                )
+              })}
+            </div>
+          </>
+        )}
+      </div>
     </section>
     </>
   )
