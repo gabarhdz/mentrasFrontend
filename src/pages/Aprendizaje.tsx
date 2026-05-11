@@ -8,6 +8,7 @@ import {
   PlayCircle,
   Upload,
 } from 'lucide-react'
+import { Link } from 'react-router-dom'
 
 import Footer from '@/components/ui/Footer'
 import Header from '@/components/ui/Header'
@@ -94,6 +95,8 @@ const createInitialSteps = (): StepState => ({
   pdfUpload: false,
   lessonCreate: false,
 })
+
+const COURSES_PER_PAGE = 6
 
 const formatFileSize = (size: number) => {
   if (size < 1024 * 1024) {
@@ -298,8 +301,7 @@ export default function Aprendizaje() {
   const [courses, setCourses] = useState<CourseSummary[]>([])
   const [selectedCourseId, setSelectedCourseId] = useState('')
   const [selectedUnitId, setSelectedUnitId] = useState('')
-  const [browseCourseId, setBrowseCourseId] = useState('')
-  const [browseUnitId, setBrowseUnitId] = useState('')
+  const [currentCatalogPage, setCurrentCatalogPage] = useState(1)
   const [courseForm, setCourseForm] = useState<CourseFormState>({
     name: '',
     description: '',
@@ -338,6 +340,11 @@ export default function Aprendizaje() {
     selectedUnits.find((unit) => unit.id === selectedUnitId) ?? null
   const ownTotalUnits = ownedCourses.reduce((total, course) => total + (course.units?.length ?? 0), 0)
   const ownTotalLessons = ownedCourses.reduce((total, course) => total + countLessons(course.units), 0)
+  const totalCatalogPages = Math.max(1, Math.ceil(courses.length / COURSES_PER_PAGE))
+  const paginatedCourses = courses.slice(
+    (currentCatalogPage - 1) * COURSES_PER_PAGE,
+    currentCatalogPage * COURSES_PER_PAGE,
+  )
 
   const completedSteps = [
     {
@@ -379,31 +386,18 @@ export default function Aprendizaje() {
       nextOwnedCourses.find((course) => course.id === selectedCourseId) ??
       nextOwnedCourses[0] ??
       null
-    const browseMatchingCourse =
-      nextCourses.find((course) => course.id === preferredCourseId) ??
-      nextCourses.find((course) => course.id === browseCourseId) ??
-      nextCourses[0] ??
-      null
     const nextCourseId = matchingCourse?.id ?? ''
     const nextUnits = matchingCourse?.units ?? []
-    const nextBrowseCourseId = browseMatchingCourse?.id ?? ''
-    const nextBrowseUnits = browseMatchingCourse?.units ?? []
     const matchingUnit =
       nextUnits.find((unit) => unit.id === preferredUnitId) ??
       nextUnits.find((unit) => unit.id === selectedUnitId) ??
       nextUnits[0] ??
       null
-    const browseMatchingUnit =
-      nextBrowseUnits.find((unit) => unit.id === preferredUnitId) ??
-      nextBrowseUnits.find((unit) => unit.id === browseUnitId) ??
-      nextBrowseUnits[0] ??
-      null
 
     setCourses(nextCourses)
     setSelectedCourseId(nextCourseId)
     setSelectedUnitId(matchingUnit?.id ?? '')
-    setBrowseCourseId(nextBrowseCourseId)
-    setBrowseUnitId(browseMatchingUnit?.id ?? '')
+    setCurrentCatalogPage(1)
     setCoursesError(null)
   }
 
@@ -420,8 +414,7 @@ export default function Aprendizaje() {
         setCourses([])
         setSelectedCourseId('')
         setSelectedUnitId('')
-        setBrowseCourseId('')
-        setBrowseUnitId('')
+        setCurrentCatalogPage(1)
         setCoursesError(message)
       }
     } finally {
@@ -440,16 +433,6 @@ export default function Aprendizaje() {
   const handleUnitSelection = (unitId: string) => {
     setSelectedUnitId(unitId)
     setLessonFeedback(null)
-  }
-
-  const handleBrowseCourseSelection = (courseId: string) => {
-    const nextCourse = courses.find((course) => course.id === courseId) ?? null
-    setBrowseCourseId(courseId)
-    setBrowseUnitId(nextCourse?.units?.[0]?.id ?? '')
-  }
-
-  const handleBrowseUnitSelection = (unitId: string) => {
-    setBrowseUnitId(unitId)
   }
 
   const handleCourseFormChange = (field: keyof CourseFormState, value: string) => {
@@ -523,6 +506,10 @@ export default function Aprendizaje() {
 
     void loadCourses()
   }, [user])
+
+  useEffect(() => {
+    setCurrentCatalogPage((currentPage) => Math.min(currentPage, totalCatalogPages))
+  }, [totalCatalogPages])
 
   const handleCreateCourse = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -757,6 +744,99 @@ export default function Aprendizaje() {
   const videoState = getFileState(videoFile)
   const pdfState = getFileState(pdfFile, true)
 
+  const renderCatalogPagination = () => {
+    if (totalCatalogPages <= 1) {
+      return null
+    }
+
+    return (
+      <div className="mt-5 flex items-center justify-between gap-3">
+        <p className="text-sm text-muted-foreground">
+          Pagina {currentCatalogPage} de {totalCatalogPages}
+        </p>
+        <div className="flex gap-2">
+          <button
+            className="rounded-full border border-border bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={currentCatalogPage === 1}
+            type="button"
+            onClick={() => setCurrentCatalogPage((page) => Math.max(1, page - 1))}
+          >
+            Anterior
+          </button>
+          <button
+            className="rounded-full border border-border bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={currentCatalogPage === totalCatalogPages}
+            type="button"
+            onClick={() => setCurrentCatalogPage((page) => Math.min(totalCatalogPages, page + 1))}
+          >
+            Siguiente
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  const renderCourseCatalog = (title: string, description: string) => (
+    <div className="rounded-[2rem] border border-border/70 bg-card/92 p-6 backdrop-blur">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-xs font-medium tracking-[0.24em] text-muted-foreground uppercase">
+            Catalogo
+          </p>
+          <h2 className="mt-2 text-xl font-semibold tracking-tight">{title}</h2>
+        </div>
+        {isLoadingCourses ? <LoaderCircle className="h-4 w-4 animate-spin text-muted-foreground" /> : null}
+      </div>
+
+      <p className="mt-2 text-sm leading-6 text-muted-foreground">{description}</p>
+
+      {coursesError ? (
+        <div className="mt-4 rounded-[1.5rem] border border-accent/30 bg-accent/10 p-4 text-sm text-foreground">
+          {coursesError}
+        </div>
+      ) : null}
+
+      {!courses.length && !isLoadingCourses ? (
+        <div className="mt-4 rounded-[1.5rem] border border-border/70 bg-background/70 p-4 text-sm leading-6 text-muted-foreground">
+          Todavia no hay cursos disponibles para mostrar.
+        </div>
+      ) : (
+        <>
+          <div className="mt-4 space-y-3">
+            {paginatedCourses.map((course) => (
+              <Link
+                key={course.id ?? course.name}
+                className="block rounded-[1.5rem] border border-border/70 bg-background/70 p-4 transition-colors hover:border-primary/30 hover:bg-primary/6"
+                to={`/aprendizaje/cursos/${course.id}`}
+              >
+                <p className="text-sm font-semibold text-foreground">
+                  {course.name || 'Curso sin nombre'}
+                </p>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                  {course.description?.trim() || 'Este curso aun no tiene descripcion.'}
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <span className="rounded-full border border-border/70 px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
+                    {course.units?.length ?? 0} unidades
+                  </span>
+                  <span className="rounded-full border border-border/70 px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
+                    {countLessons(course.units)} lecciones
+                  </span>
+                  {course.author_username ? (
+                    <span className="rounded-full border border-border/70 px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
+                      Por {course.author_username}
+                    </span>
+                  ) : null}
+                </div>
+              </Link>
+            ))}
+          </div>
+          {renderCatalogPagination()}
+        </>
+      )}
+    </div>
+  )
+
   if (isLoadingUser) {
     return (
       <main className="relative min-h-screen overflow-hidden text-foreground">
@@ -847,55 +927,10 @@ export default function Aprendizaje() {
                 </div>
               </div>
 
-              <div className="rounded-[2rem] border border-border/70 bg-card/92 p-6 backdrop-blur">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-xs font-medium tracking-[0.24em] text-muted-foreground uppercase">
-                      Catalogo
-                    </p>
-                    <h2 className="mt-2 text-xl font-semibold tracking-tight">Cursos disponibles</h2>
-                  </div>
-                  {isLoadingCourses ? <LoaderCircle className="h-4 w-4 animate-spin text-muted-foreground" /> : null}
-                </div>
-
-                {coursesError ? (
-                  <div className="mt-4 rounded-[1.5rem] border border-accent/30 bg-accent/10 p-4 text-sm text-foreground">
-                    {coursesError}
-                  </div>
-                ) : null}
-
-                {!courses.length && !isLoadingCourses ? (
-                  <div className="mt-4 rounded-[1.5rem] border border-border/70 bg-background/70 p-4 text-sm leading-6 text-muted-foreground">
-                    Todavia no hay cursos disponibles para mostrar.
-                  </div>
-                ) : (
-                  <div className="mt-4 space-y-3">
-                    {courses.map((course) => (
-                      <article key={course.id ?? course.name} className="rounded-[1.5rem] border border-border/70 bg-background/70 p-4">
-                        <p className="text-sm font-semibold text-foreground">
-                          {course.name || 'Curso sin nombre'}
-                        </p>
-                        <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                          {course.description?.trim() || 'Este curso aun no tiene descripcion.'}
-                        </p>
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          <span className="rounded-full border border-border/70 px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
-                            {course.units?.length ?? 0} unidades
-                          </span>
-                          <span className="rounded-full border border-border/70 px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
-                            {countLessons(course.units)} lecciones
-                          </span>
-                          {course.author_username ? (
-                            <span className="rounded-full border border-border/70 px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
-                              Por {course.author_username}
-                            </span>
-                          ) : null}
-                        </div>
-                      </article>
-                    ))}
-                  </div>
-                )}
-              </div>
+              {renderCourseCatalog(
+                'Cursos disponibles',
+                'Explora el catalogo completo. Al abrir un curso podras ver su contenido en una pagina individual.',
+              )}
             </aside>
           </div>
         </section>
@@ -1349,142 +1384,10 @@ export default function Aprendizaje() {
               </div>
             </div>
 
-            <div className="rounded-[2rem] border border-border/70 bg-card/92 p-6 backdrop-blur">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-xs font-medium tracking-[0.24em] text-muted-foreground uppercase">
-                    Catalogo
-                  </p>
-                  <h2 className="mt-2 text-xl font-semibold tracking-tight">Explora todos los cursos</h2>
-                </div>
-                {isLoadingCourses ? <LoaderCircle className="h-4 w-4 animate-spin text-muted-foreground" /> : null}
-              </div>
-
-              {coursesError ? (
-                <div className="mt-4 rounded-[1.5rem] border border-accent/30 bg-accent/10 p-4 text-sm text-foreground">
-                  {coursesError}
-                </div>
-              ) : null}
-
-              {!courses.length && !isLoadingCourses ? (
-                <div className="mt-4 rounded-[1.5rem] border border-border/70 bg-background/70 p-4 text-sm leading-6 text-muted-foreground">
-                  Cuando empieces a crear contenido, aqui veras la estructura completa.
-                </div>
-              ) : (
-                <div className="mt-4 space-y-3">
-                  {courses.map((course) => {
-                    const courseId = course.id ?? ''
-                    const units = course.units ?? []
-                    const isSelectedCourse = courseId === browseCourseId
-
-                    return (
-                      <article
-                        key={course.id ?? course.name}
-                        className={`rounded-[1.5rem] border p-4 transition-colors ${
-                          isSelectedCourse
-                            ? 'border-primary/30 bg-primary/8'
-                            : 'border-border/70 bg-background/70'
-                        }`}
-                      >
-                        <button
-                          className="w-full text-left"
-                          type="button"
-                          onClick={() => handleBrowseCourseSelection(courseId)}
-                        >
-                          <div className="flex flex-wrap items-start justify-between gap-3">
-                            <div>
-                              <p className="text-sm font-semibold text-foreground">
-                                {course.name || 'Curso sin nombre'}
-                              </p>
-                              <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                                {course.description?.trim() || 'Este curso aun no tiene descripcion.'}
-                              </p>
-                              {course.author_username ? (
-                                <p className="mt-2 text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                                  Creado por {course.author_username}
-                                </p>
-                              ) : null}
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                              <span className="rounded-full border border-border/70 px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
-                                {units.length} unidades
-                              </span>
-                              <span className="rounded-full border border-border/70 px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
-                                {countLessons(units)} lecciones
-                              </span>
-                            </div>
-                          </div>
-                        </button>
-
-                        {isSelectedCourse ? (
-                          <div className="mt-4 space-y-2 border-l border-border/70 pl-4">
-                            {units.length ? (
-                              units.map((unit) => {
-                                const unitId = unit.id ?? ''
-                                const isSelectedUnit = unitId === browseUnitId
-
-                                return (
-                                  <div key={unit.id ?? unit.title} className="space-y-2">
-                                    <button
-                                      className={`w-full rounded-2xl border px-4 py-3 text-left transition-colors ${
-                                        isSelectedUnit
-                                          ? 'border-primary/30 bg-primary/8'
-                                          : 'border-border/70 bg-background/80'
-                                      }`}
-                                      type="button"
-                                      onClick={() => handleBrowseUnitSelection(unitId)}
-                                    >
-                                      <div className="flex items-start justify-between gap-3">
-                                        <div>
-                                          <p className="text-sm font-semibold text-foreground">
-                                            {unit.title || 'Unidad sin titulo'}
-                                          </p>
-                                          <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                                            {unit.description?.trim() || 'Esta unidad aun no tiene descripcion.'}
-                                          </p>
-                                        </div>
-                                        <span className="rounded-full border border-border/70 px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
-                                          {unit.lessons?.length ?? 0} lecciones
-                                        </span>
-                                      </div>
-                                    </button>
-
-                                    {isSelectedUnit ? (
-                                      <div className="space-y-2 pl-3">
-                                        {unit.lessons?.length ? (
-                                          unit.lessons.map((lesson, index) => (
-                                            <div
-                                              key={lesson.id ?? `${unitId}-${index}`}
-                                              className="rounded-2xl border border-border/70 bg-background/70 px-4 py-3"
-                                            >
-                                              <p className="text-sm font-medium text-foreground">
-                                                {lesson.title || `Leccion ${index + 1}`}
-                                              </p>
-                                            </div>
-                                          ))
-                                        ) : (
-                                          <div className="rounded-2xl border border-border/70 bg-background/70 px-4 py-3 text-sm text-muted-foreground">
-                                            Esta unidad todavia no tiene lecciones.
-                                          </div>
-                                        )}
-                                      </div>
-                                    ) : null}
-                                  </div>
-                                )
-                              })
-                            ) : (
-                              <div className="rounded-2xl border border-border/70 bg-background/70 px-4 py-3 text-sm text-muted-foreground">
-                                Este curso todavia no tiene unidades.
-                              </div>
-                            )}
-                          </div>
-                        ) : null}
-                      </article>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
+            {renderCourseCatalog(
+              'Explora todos los cursos',
+              'Puedes entrar a cualquier curso del catalogo para ver sus unidades y lecciones en una pagina dedicada.',
+            )}
 
             <div className="rounded-[2rem] border border-border/70 bg-card/92 p-6 backdrop-blur">
               <p className="text-xs font-medium tracking-[0.24em] text-muted-foreground uppercase">

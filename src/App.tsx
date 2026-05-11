@@ -6,6 +6,7 @@ import AuthCode from "./pages/AuthCode";
 import Profile from "./pages/Profile";
 import Pymes from "./pages/Pymes";
 import Aprendizaje from "./pages/Aprendizaje";
+import CursoAprendizaje from "./pages/CursoAprendizaje";
 import Herramientas from "./pages/Herramientas";
 import Dashboard from "./pages/Dashboard";
 import Blog from "./pages/Blog";
@@ -29,6 +30,7 @@ export default function App() {
           <Route path="/profile" element={<Profile />} />
           <Route path="/pymes" element={<Pymes />} />
           <Route path="/aprendizaje" element={<Aprendizaje />} />
+          <Route path="/aprendizaje/cursos/:courseId" element={<CursoAprendizaje />} />
           <Route path="/herramientas" element={<Herramientas />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/blog" element={<Blog />} />
