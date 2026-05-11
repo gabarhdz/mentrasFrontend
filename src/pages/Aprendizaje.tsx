@@ -1,11 +1,15 @@
 import { useEffect, useState } from 'react'
 import type { ChangeEvent, FormEvent } from 'react'
 import {
+  ArrowLeft,
   BookOpen,
   CircleCheckBig,
   FileText,
+  FolderTree,
   LoaderCircle,
   PlayCircle,
+  Sparkles,
+  Trash2,
   Upload,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
@@ -232,6 +236,51 @@ const createUnitRequest = async (courseId: string, payload: UnitFormState) => {
   return (await response.json()) as UnitSummary
 }
 
+const deleteResourceRequest = async (paths: string[], fallbackMessage: string) => {
+  for (const path of paths) {
+    const response = await authFetch(buildBackendUrl(path), {
+      method: 'DELETE',
+    })
+
+    if (response.status === 401) {
+      redirectToAuth()
+      throw new Error('Tu sesion vencio. Inicia sesion otra vez.')
+    }
+
+    if (response.status === 404 || response.status === 405) {
+      continue
+    }
+
+    if (!response.ok) {
+      throw new Error(await getResponseErrorMessage(response, fallbackMessage))
+    }
+
+    return
+  }
+
+  throw new Error('No encontramos una ruta valida para quitar este contenido.')
+}
+
+const deleteUnitRequest = async (courseId: string, unitId: string) => {
+  await deleteResourceRequest(
+    [
+      `/api/learning/courses/${courseId}/units/${unitId}/`,
+      `/api/learning/units/${unitId}/`,
+    ],
+    'No se pudo quitar la unidad.',
+  )
+}
+
+const deleteLessonRequest = async (unitId: string, lessonId: string) => {
+  await deleteResourceRequest(
+    [
+      `/api/learning/units/${unitId}/lessons/${lessonId}/`,
+      `/api/learning/lessons/${lessonId}/`,
+    ],
+    'No se pudo quitar la leccion.',
+  )
+}
+
 const resolveUploadUrl = (data: Record<string, unknown>) => {
   const nestedResponse = data.response
 
@@ -326,11 +375,14 @@ export default function Aprendizaje() {
   const [courseFeedback, setCourseFeedback] = useState<FeedbackState | null>(null)
   const [unitFeedback, setUnitFeedback] = useState<FeedbackState | null>(null)
   const [lessonFeedback, setLessonFeedback] = useState<FeedbackState | null>(null)
+  const [structureFeedback, setStructureFeedback] = useState<FeedbackState | null>(null)
   const [lessonStatusMessage, setLessonStatusMessage] = useState(
     'Sigue el orden: primero el curso, despues la unidad y al final la leccion.',
   )
   const [steps, setSteps] = useState<StepState>(createInitialSteps())
   const [createdLesson, setCreatedLesson] = useState<LessonDetail | null>(null)
+  const [isDeletingUnitId, setIsDeletingUnitId] = useState('')
+  const [isDeletingLessonId, setIsDeletingLessonId] = useState('')
 
   const ownedCourses = courses.filter((course) => course.author && user?.id && course.author === user.id)
   const selectedCourse =
@@ -345,17 +397,22 @@ export default function Aprendizaje() {
     (currentCatalogPage - 1) * COURSES_PER_PAGE,
     currentCatalogPage * COURSES_PER_PAGE,
   )
+  const hasLessonAttachments = Boolean(videoFile || pdfFile)
 
   const completedSteps = [
     {
       label: 'Preparamos la subida',
-      done: steps.uploadAuth,
-      description: 'Preparamos todo para cargar tus archivos de forma segura.',
+      done: !hasLessonAttachments || steps.uploadAuth,
+      description: hasLessonAttachments
+        ? 'Preparamos todo para cargar tus archivos de forma segura.'
+        : 'Este paso se omite si decides crear la leccion sin archivos.',
     },
     {
       label: 'Subimos el video',
-      done: steps.videoUpload,
-      description: 'Tu video se esta cargando.',
+      done: !videoFile || steps.videoUpload,
+      description: videoFile
+        ? 'Tu video se esta cargando.'
+        : 'Este paso se omite si no agregas video.',
     },
     {
       label: 'Adjuntamos el PDF',
@@ -428,11 +485,13 @@ export default function Aprendizaje() {
     setSelectedUnitId(nextCourse?.units?.[0]?.id ?? '')
     setUnitFeedback(null)
     setLessonFeedback(null)
+    setStructureFeedback(null)
   }
 
   const handleUnitSelection = (unitId: string) => {
     setSelectedUnitId(unitId)
     setLessonFeedback(null)
+    setStructureFeedback(null)
   }
 
   const handleCourseFormChange = (field: keyof CourseFormState, value: string) => {
@@ -637,38 +696,36 @@ export default function Aprendizaje() {
       return
     }
 
-    if (!videoFile) {
-      setLessonFeedback({
-        type: 'error',
-        message: 'Sube un video antes de guardar la leccion.',
-      })
-      return
-    }
-
     setIsSubmittingLesson(true)
     setLessonFeedback(null)
     setCreatedLesson(null)
     setSteps(createInitialSteps())
 
     try {
-      setLessonStatusMessage('Preparando tus materiales...')
-      const authResponse = await authFetch(buildBackendUrl('/api/learning/uploads/auth/'))
-      await ensureSuccessfulResponse(authResponse, 'No se pudo preparar la carga de archivos.')
-
-      const uploadAuth = (await authResponse.json()) as UploadAuthResponse
-      setSteps((currentSteps) => ({ ...currentSteps, uploadAuth: true }))
-
-      setLessonStatusMessage('Subiendo el video principal...')
-      const videoUrl = await uploadFileToImageKit(
-        videoFile,
-        uploadAuth,
-        '/learning/lessons/videos',
-      )
-      setSteps((currentSteps) => ({ ...currentSteps, videoUpload: true }))
-
+      let uploadAuth: UploadAuthResponse | null = null
+      let videoUrl: string | null = null
       let pdfUrl: string | null = null
 
-      if (pdfFile) {
+      if (hasLessonAttachments) {
+        setLessonStatusMessage('Preparando tus materiales...')
+        const authResponse = await authFetch(buildBackendUrl('/api/learning/uploads/auth/'))
+        await ensureSuccessfulResponse(authResponse, 'No se pudo preparar la carga de archivos.')
+
+        uploadAuth = (await authResponse.json()) as UploadAuthResponse
+        setSteps((currentSteps) => ({ ...currentSteps, uploadAuth: true }))
+      }
+
+      if (videoFile && uploadAuth) {
+        setLessonStatusMessage('Subiendo el video principal...')
+        videoUrl = await uploadFileToImageKit(
+          videoFile,
+          uploadAuth,
+          '/learning/lessons/videos',
+        )
+        setSteps((currentSteps) => ({ ...currentSteps, videoUpload: true }))
+      }
+
+      if (pdfFile && uploadAuth) {
         setLessonStatusMessage('Subiendo el material complementario...')
         pdfUrl = await uploadFileToImageKit(
           pdfFile,
@@ -689,7 +746,7 @@ export default function Aprendizaje() {
           body: JSON.stringify({
             title: lessonForm.title.trim(),
             content: lessonForm.content.trim(),
-            video_url: videoUrl,
+            ...(videoUrl ? { video_url: videoUrl } : {}),
             ...(pdfUrl ? { pdf_url: pdfUrl } : {}),
           }),
         },
@@ -702,9 +759,13 @@ export default function Aprendizaje() {
       setCreatedLesson(lesson)
       setLessonFeedback({
         type: 'success',
-        message: 'Leccion creada correctamente. El material ya quedo listo.',
+        message: 'Leccion creada correctamente.',
       })
-      setLessonStatusMessage('Todo quedo listo. Tu leccion ya aparece dentro del contenido.')
+      setLessonStatusMessage(
+        hasLessonAttachments
+          ? 'Todo quedo listo. Tu leccion y sus materiales ya aparecen dentro del contenido.'
+          : 'Todo quedo listo. Tu leccion ya aparece dentro del contenido.',
+      )
       setLessonForm({
         title: '',
         content: '',
@@ -724,6 +785,61 @@ export default function Aprendizaje() {
       setLessonStatusMessage('El proceso se detuvo antes de completar la leccion.')
     } finally {
       setIsSubmittingLesson(false)
+    }
+  }
+
+  const handleRemoveUnit = async (unitId: string) => {
+    if (!selectedCourseId) {
+      setStructureFeedback({
+        type: 'error',
+        message: 'Selecciona un curso antes de quitar una unidad.',
+      })
+      return
+    }
+
+    setIsDeletingUnitId(unitId)
+    setStructureFeedback(null)
+
+    try {
+      await deleteUnitRequest(selectedCourseId, unitId)
+      await loadCourses({ preferredCourseId: selectedCourseId })
+      setStructureFeedback({
+        type: 'success',
+        message: 'Unidad eliminada. La estructura del curso ya quedo actualizada.',
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'No se pudo quitar la unidad.'
+      setStructureFeedback({
+        type: 'error',
+        message,
+      })
+    } finally {
+      setIsDeletingUnitId('')
+    }
+  }
+
+  const handleRemoveLesson = async (unitId: string, lessonId: string) => {
+    setIsDeletingLessonId(lessonId)
+    setStructureFeedback(null)
+
+    try {
+      await deleteLessonRequest(unitId, lessonId)
+      await loadCourses({
+        preferredCourseId: selectedCourseId,
+        preferredUnitId: unitId,
+      })
+      setStructureFeedback({
+        type: 'success',
+        message: 'Leccion eliminada. Ya no aparece dentro de la unidad.',
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'No se pudo quitar la leccion.'
+      setStructureFeedback({
+        type: 'error',
+        message,
+      })
+    } finally {
+      setIsDeletingLessonId('')
     }
   }
 
@@ -875,7 +991,16 @@ export default function Aprendizaje() {
         <Header />
         <section className="relative px-6 py-14 md:px-12 lg:px-24 xl:px-40">
           <div className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-72 bg-linear-to-b from-primary/8 via-secondary/6 to-transparent" />
-          <div className="mx-auto grid max-w-6xl gap-6 lg:grid-cols-[0.95fr_1.05fr]">
+          <div className="mx-auto max-w-6xl space-y-6">
+            <Link
+              className="inline-flex items-center gap-2 rounded-full border border-border bg-card/85 px-4 py-2 text-sm font-medium text-foreground shadow-sm backdrop-blur transition-colors hover:bg-muted"
+              to="/aprendizaje"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Volver a Aprendizaje
+            </Link>
+
+            <div className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
             <section className="overflow-hidden rounded-[2rem] border border-border/70 bg-card/90 shadow-sm backdrop-blur">
               <div className="border-b border-border/70 bg-linear-to-br from-secondary/10 via-primary/8 to-transparent px-7 py-8">
                 <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-border/70 bg-background/80 px-3 py-1 text-xs font-medium tracking-[0.24em] text-muted-foreground uppercase">
@@ -932,6 +1057,7 @@ export default function Aprendizaje() {
                 'Explora el catalogo completo. Al abrir un curso podras ver su contenido en una pagina individual.',
               )}
             </aside>
+            </div>
           </div>
         </section>
         <Footer />
@@ -948,20 +1074,29 @@ export default function Aprendizaje() {
         <div className="pointer-events-none absolute left-0 top-24 -z-10 h-56 w-56 rounded-full bg-primary/10 blur-3xl" />
         <div className="pointer-events-none absolute right-0 top-40 -z-10 h-64 w-64 rounded-full bg-secondary/10 blur-3xl" />
 
-        <div className="mx-auto grid max-w-6xl gap-6 lg:grid-cols-[1.15fr_0.85fr]">
+        <div className="mx-auto max-w-6xl space-y-6">
+          <Link
+            className="inline-flex items-center gap-2 rounded-full border border-border bg-card/85 px-4 py-2 text-sm font-medium text-foreground shadow-sm backdrop-blur transition-colors hover:bg-muted"
+            to="/aprendizaje"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Volver a Aprendizaje
+          </Link>
+
+          <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
           <section className="space-y-6">
             <div className="overflow-hidden rounded-[2rem] border border-border/70 bg-card/90 shadow-[0_28px_80px_-46px_rgba(0,137,123,0.45)] backdrop-blur">
               <div className="border-b border-border/70 bg-linear-to-br from-primary/12 via-secondary/10 to-accent/12 px-7 py-8">
                 <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-background/80 px-3 py-1 text-xs font-medium tracking-[0.24em] text-primary uppercase">
                   <BookOpen className="h-3.5 w-3.5" />
-                  Espacio mentor
+                  Menu creador
                 </div>
                 <h1 className="max-w-3xl text-4xl font-semibold tracking-tight text-balance md:text-5xl">
-                  Crea tu contenido paso a paso: curso, unidad y leccion
+                  Crea un curso nuevo o gestiona el contenido que ya existe
                 </h1>
                 <p className="mt-4 max-w-3xl text-sm leading-6 text-muted-foreground md:text-base">
-                  Esta vista te acompana paso a paso. Primero creas el curso, luego organizas las
-                  unidades y al final agregas cada leccion con sus materiales.
+                  Aqui tienes dos caminos claros: empezar un curso desde cero o entrar a un curso
+                  existente para sumarle mas unidades, mas lecciones o quitar contenido.
                 </p>
                 <div className="mt-5 flex flex-wrap gap-2">
                   {workflowChips.map((chip) => (
@@ -1000,13 +1135,46 @@ export default function Aprendizaje() {
               </div>
             </div>
 
-            <div className="rounded-[2rem] border border-border/70 bg-card/92 p-6 shadow-sm backdrop-blur">
+            <div className="grid gap-4 md:grid-cols-2">
+              <a
+                className="rounded-[1.75rem] border border-primary/20 bg-primary/8 p-5 transition hover:border-primary/35 hover:bg-primary/10"
+                href="#crear-curso"
+              >
+                <p className="text-xs font-medium tracking-[0.24em] text-primary uppercase">
+                  Crear nuevo
+                </p>
+                <p className="mt-2 text-lg font-semibold text-foreground">Empieza un curso desde cero</p>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                  Define el curso base y luego continua con su estructura.
+                </p>
+              </a>
+
+              <a
+                className="rounded-[1.75rem] border border-border/70 bg-card/92 p-5 transition hover:border-primary/30 hover:bg-primary/6"
+                href="#gestionar-contenido"
+              >
+                <p className="text-xs font-medium tracking-[0.24em] text-muted-foreground uppercase">
+                  Gestionar existente
+                </p>
+                <p className="mt-2 text-lg font-semibold text-foreground">
+                  Agrega o quita contenido en cursos existentes
+                </p>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                  Selecciona uno de tus cursos y trabaja sus unidades y lecciones aparte.
+                </p>
+              </a>
+            </div>
+
+            <div
+              id="crear-curso"
+              className="rounded-[2rem] border border-border/70 bg-card/92 p-6 shadow-sm backdrop-blur"
+            >
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <p className="text-xs font-medium tracking-[0.24em] text-muted-foreground uppercase">
-                    Paso 1
+                  <p className="text-xs font-medium tracking-[0.24em] text-primary uppercase">
+                    Crear nuevo
                   </p>
-                  <h2 className="mt-1 text-2xl font-semibold tracking-tight">Crea el curso</h2>
+                  <h2 className="mt-1 text-2xl font-semibold tracking-tight">Crea un curso nuevo</h2>
                 </div>
                 <span className="rounded-full border border-border/70 bg-background/80 px-3 py-1 text-xs font-medium text-muted-foreground">
                   Base de toda la estructura
@@ -1059,11 +1227,82 @@ export default function Aprendizaje() {
               </form>
             </div>
 
+            <div
+              id="gestionar-contenido"
+              className="rounded-[2rem] border border-border/70 bg-card/92 p-6 shadow-sm backdrop-blur"
+            >
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <div className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-background/80 px-3 py-1 text-xs font-medium tracking-[0.24em] text-muted-foreground uppercase">
+                    <FolderTree className="h-3.5 w-3.5" />
+                    Gestionar existente
+                  </div>
+                  <h2 className="mt-3 text-2xl font-semibold tracking-tight">
+                    Agrega mas contenido o quita lo que ya no va
+                  </h2>
+                  <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
+                    Esta parte funciona aparte del curso nuevo. Primero eliges uno de tus cursos y
+                    despues decides si vas a sumarle unidades, agregar lecciones o limpiar contenido.
+                  </p>
+                </div>
+
+                <div className="rounded-[1.5rem] border border-border/70 bg-background/70 px-4 py-3 text-sm text-muted-foreground">
+                  {selectedCourse ? `Curso activo: ${selectedCourse.name || 'Sin nombre'}` : 'Selecciona un curso propio'}
+                </div>
+              </div>
+
+              {!ownedCourses.length ? (
+                <div className="mt-6 rounded-[1.5rem] border border-border/70 bg-background/70 p-5 text-sm leading-6 text-muted-foreground">
+                  Cuando crees tu primer curso, aqui podras volver para seguirlo armando y tambien
+                  para quitar unidades o lecciones existentes.
+                </div>
+              ) : (
+                <>
+                  <div className="mt-6 grid gap-5 md:grid-cols-[1.1fr_0.9fr]">
+                    <label className="space-y-2">
+                      <span className="text-sm font-medium text-foreground">Curso que vas a gestionar</span>
+                      <select
+                        className="w-full rounded-2xl border border-border bg-background px-4 py-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+                        value={selectedCourseId}
+                        onChange={(event) => handleCourseSelection(event.target.value)}
+                      >
+                        {ownedCourses.map((course) => (
+                          <option key={course.id ?? course.name} value={course.id ?? ''}>
+                            {course.name || 'Curso sin nombre'}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <div className="rounded-[1.5rem] border border-primary/20 bg-primary/8 p-4 text-sm leading-6 text-muted-foreground">
+                      <p className="font-semibold text-foreground">Que puedes hacer aqui</p>
+                      <p className="mt-2">
+                        Usa los formularios de abajo para agregar mas contenido o el panel final para
+                        quitar unidades y lecciones del curso seleccionado.
+                      </p>
+                    </div>
+                  </div>
+
+                  {structureFeedback ? (
+                    <div
+                      className={`mt-5 rounded-[1.5rem] border px-4 py-3 text-sm ${
+                        structureFeedback.type === 'success'
+                          ? 'border-primary/25 bg-primary/8 text-foreground'
+                          : 'border-accent/30 bg-accent/10 text-foreground'
+                      }`}
+                    >
+                      {structureFeedback.message}
+                    </div>
+                  ) : null}
+                </>
+              )}
+            </div>
+
             <div className="rounded-[2rem] border border-border/70 bg-card/92 p-6 shadow-sm backdrop-blur">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-xs font-medium tracking-[0.24em] text-muted-foreground uppercase">
-                    Paso 2
+                    Gestionar existente
                   </p>
                   <h2 className="mt-1 text-2xl font-semibold tracking-tight">Agrega una unidad</h2>
                 </div>
@@ -1143,9 +1382,9 @@ export default function Aprendizaje() {
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-xs font-medium tracking-[0.24em] text-muted-foreground uppercase">
-                    Paso 3
+                    Gestionar existente
                   </p>
-                  <h2 className="mt-1 text-2xl font-semibold tracking-tight">Crea la leccion</h2>
+                  <h2 className="mt-1 text-2xl font-semibold tracking-tight">Agrega una leccion</h2>
                 </div>
                 <span className="rounded-full border border-border/70 bg-background/80 px-3 py-1 text-xs font-medium text-muted-foreground">
                   {selectedUnit ? `Unidad activa: ${selectedUnit.title || 'Sin titulo'}` : 'Selecciona una unidad'}
@@ -1257,7 +1496,7 @@ export default function Aprendizaje() {
                         <div>
                           <p className="text-sm font-semibold text-foreground">Video principal</p>
                           <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                            Este archivo es obligatorio para completar la leccion.
+                            Puedes subirlo si esta leccion necesita video, pero no es obligatorio.
                           </p>
                         </div>
                       </div>
@@ -1347,6 +1586,98 @@ export default function Aprendizaje() {
                 </form>
               )}
             </div>
+
+            <div className="rounded-[2rem] border border-border/70 bg-card/92 p-6 shadow-sm backdrop-blur">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-xs font-medium tracking-[0.24em] text-muted-foreground uppercase">
+                    Gestionar existente
+                  </p>
+                  <h2 className="mt-1 text-2xl font-semibold tracking-tight">
+                    Quita unidades o lecciones del curso actual
+                  </h2>
+                </div>
+                <span className="rounded-full border border-border/70 bg-background/80 px-3 py-1 text-xs font-medium text-muted-foreground">
+                  {selectedCourse ? `Editando ${selectedCourse.name || 'curso sin nombre'}` : 'Sin curso seleccionado'}
+                </span>
+              </div>
+
+              {!ownedCourses.length ? (
+                <div className="mt-6 rounded-[1.5rem] border border-border/70 bg-background/70 p-5 text-sm leading-6 text-muted-foreground">
+                  Esta seccion se habilita cuando ya tengas cursos propios.
+                </div>
+              ) : !selectedCourse ? (
+                <div className="mt-6 rounded-[1.5rem] border border-border/70 bg-background/70 p-5 text-sm leading-6 text-muted-foreground">
+                  Selecciona un curso para revisar su estructura actual.
+                </div>
+              ) : !selectedUnits.length ? (
+                <div className="mt-6 rounded-[1.5rem] border border-border/70 bg-background/70 p-5 text-sm leading-6 text-muted-foreground">
+                  Este curso aun no tiene unidades para quitar.
+                </div>
+              ) : (
+                <div className="mt-6 space-y-4">
+                  {selectedUnits.map((unit, unitIndex) => (
+                    <article
+                      key={unit.id ?? `${unit.title}-${unitIndex}`}
+                      className="rounded-[1.5rem] border border-border/70 bg-background/70 p-5"
+                    >
+                      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                          <p className="text-base font-semibold text-foreground">
+                            {unit.title || `Unidad ${unitIndex + 1}`}
+                          </p>
+                          <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                            {unit.description?.trim() || 'Esta unidad aun no tiene descripcion.'}
+                          </p>
+                        </div>
+                        <button
+                          className="inline-flex items-center justify-center gap-2 rounded-full border border-accent/30 bg-accent/10 px-4 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-accent/15 disabled:cursor-not-allowed disabled:opacity-60"
+                          disabled={!unit.id || isDeletingUnitId === unit.id || isDeletingLessonId !== ''}
+                          type="button"
+                          onClick={() => unit.id && handleRemoveUnit(unit.id)}
+                        >
+                          {isDeletingUnitId === unit.id ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                          {isDeletingUnitId === unit.id ? 'Quitando...' : 'Quitar unidad'}
+                        </button>
+                      </div>
+
+                      <div className="mt-4 space-y-3">
+                        {unit.lessons?.length ? (
+                          unit.lessons.map((lesson, lessonIndex) => (
+                            <div
+                              key={lesson.id ?? `${unit.id}-${lessonIndex}`}
+                              className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-card/80 px-4 py-4 sm:flex-row sm:items-center sm:justify-between"
+                            >
+                              <div>
+                                <p className="text-sm font-semibold text-foreground">
+                                  {lesson.title || `Leccion ${lessonIndex + 1}`}
+                                </p>
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                  Esta leccion pertenece a la unidad {unit.title || `#${unitIndex + 1}`}.
+                                </p>
+                              </div>
+                              <button
+                                className="inline-flex items-center justify-center gap-2 rounded-full border border-accent/30 bg-accent/10 px-4 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-accent/15 disabled:cursor-not-allowed disabled:opacity-60"
+                                disabled={!lesson.id || !unit.id || isDeletingLessonId === lesson.id || isDeletingUnitId !== ''}
+                                type="button"
+                                onClick={() => unit.id && lesson.id && handleRemoveLesson(unit.id, lesson.id)}
+                              >
+                                {isDeletingLessonId === lesson.id ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                                {isDeletingLessonId === lesson.id ? 'Quitando...' : 'Quitar leccion'}
+                              </button>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="rounded-2xl border border-border/70 bg-card/80 px-4 py-3 text-sm text-muted-foreground">
+                            Esta unidad no tiene lecciones. Puedes quitar la unidad completa si ya no la necesitas.
+                          </div>
+                        )}
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </div>
           </section>
 
           <aside className="space-y-5">
@@ -1381,6 +1712,19 @@ export default function Aprendizaje() {
                     {selectedUnit?.title || 'Sin unidad propia'}
                   </span>
                 </p>
+              </div>
+
+              <div className="mt-5 rounded-[1.5rem] border border-primary/20 bg-primary/8 p-4">
+                <div className="flex items-start gap-3">
+                  <Sparkles className="mt-0.5 h-4 w-4 text-primary" />
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">Dos formas de trabajar</p>
+                    <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                      Arriba tienes una parte para crear cursos nuevos y otra, separada, para seguir
+                      editando cursos que ya existen.
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -1451,6 +1795,7 @@ export default function Aprendizaje() {
               </div>
             ) : null}
           </aside>
+          </div>
         </div>
       </section>
 
