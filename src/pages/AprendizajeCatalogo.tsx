@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ArrowRight, BookOpen, FolderPlus, LoaderCircle, Sparkles } from 'lucide-react'
+import { ArrowRight, BarChart3, BookOpen, FolderPlus, Layers3, LoaderCircle, PlayCircle, Sparkles } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
 import { countLessons } from '@/components/learning/course-learning-types'
@@ -24,6 +24,7 @@ type CourseSummary = {
 }
 
 const COURSES_PER_PAGE = 6
+const MAX_VISUAL_BAR_HEIGHT = 88
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null
@@ -55,6 +56,9 @@ const normalizeCoursesResponse = (payload: unknown) => {
 
   return []
 }
+
+const getVisualBarHeight = (value: number, multiplier: number) =>
+  Math.max(24, Math.min(MAX_VISUAL_BAR_HEIGHT, value * multiplier))
 
 const getResponseErrorMessage = async (response: Response, fallbackMessage: string) => {
   try {
@@ -363,33 +367,92 @@ export default function AprendizajeCatalogo() {
             ) : (
               <>
                 <div className="mt-4 space-y-3">
-                  {paginatedCourses.map((course) => (
-                    <Link
-                      key={course.id ?? course.name}
-                      className="block rounded-[1.5rem] border border-border/70 bg-background/70 p-4 transition-colors hover:border-primary/30 hover:bg-primary/6"
-                      to={`/aprendizaje/cursos/${course.id}`}
-                    >
-                      <p className="text-sm font-semibold text-foreground">
-                        {course.name || 'Curso sin nombre'}
-                      </p>
-                      <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                        {course.description?.trim() || 'Este curso aun no tiene descripcion.'}
-                      </p>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        <span className="rounded-full border border-border/70 px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
-                          {course.units?.length ?? 0} unidades
-                        </span>
-                        <span className="rounded-full border border-border/70 px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
-                          {countLessons(course.units)} lecciones
-                        </span>
-                        {course.author_username ? (
-                          <span className="rounded-full border border-border/70 px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
-                            Por {course.author_username}
-                          </span>
-                        ) : null}
-                      </div>
-                    </Link>
-                  ))}
+                  {paginatedCourses.map((course) => {
+                    const unitCount = course.units?.length ?? 0
+                    const lessonCount = countLessons(course.units)
+                    const unitBarHeight = getVisualBarHeight(unitCount, 18)
+                    const lessonBarHeight = getVisualBarHeight(lessonCount, 8)
+
+                    return (
+                      <Link
+                        key={course.id ?? course.name}
+                        className="block rounded-[1.5rem] border border-border/70 bg-background/70 p-4 transition-colors hover:border-primary/30 hover:bg-primary/6"
+                        to={`/aprendizaje/cursos/${course.id}`}
+                      >
+                        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_220px] lg:items-center">
+                          <div>
+                            <p className="text-sm font-semibold text-foreground">
+                              {course.name || 'Curso sin nombre'}
+                            </p>
+                            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                              {course.description?.trim() || 'Este curso aun no tiene descripcion.'}
+                            </p>
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              <span className="rounded-full border border-border/70 px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
+                                {unitCount} unidades
+                              </span>
+                              <span className="rounded-full border border-border/70 px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
+                                {lessonCount} lecciones
+                              </span>
+                              {course.author_username ? (
+                                <span className="rounded-full border border-border/70 px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
+                                  Por {course.author_username}
+                                </span>
+                              ) : null}
+                            </div>
+                          </div>
+
+                          <div className="rounded-[1.35rem] border border-border/70 bg-linear-to-br from-primary/10 via-background/95 to-secondary/10 p-4 shadow-sm">
+                            <div className="flex items-center justify-between gap-3 pb-4">
+                              <div>
+                                <p className="text-[11px] font-medium tracking-[0.22em] text-muted-foreground uppercase">
+                                  Vista rapida
+                                </p>
+                                <p className="mt-1 text-sm font-semibold text-foreground">
+                                  Estructura del curso
+                                </p>
+                              </div>
+                              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/12 text-primary">
+                                <BarChart3 className="h-4 w-4" />
+                              </div>
+                            </div>
+
+                            <div className="mt-4 flex items-end justify-between gap-4">
+                              <div className="flex h-24 items-end gap-3 pt-6">
+                                <div className="flex flex-col items-center gap-2">
+                                  <div className="flex h-24 w-14 items-end rounded-full bg-background/90 p-1 shadow-inner">
+                                    <div
+                                      className="w-full rounded-full bg-linear-to-t from-primary to-primary/55"
+                                      style={{ height: `${unitBarHeight}px` }}
+                                    />
+                                  </div>
+                                  <div className="flex items-center gap-1 text-[11px] font-medium text-muted-foreground">
+                                    <Layers3 className="h-3.5 w-3.5" />
+                                    Unidades
+                                  </div>
+                                </div>
+
+                                <div className="flex flex-col items-center gap-2">
+                                  <div className="flex h-24 w-14 items-end rounded-full bg-background/90 p-1 shadow-inner">
+                                    <div
+                                      className="w-full rounded-full bg-linear-to-t from-secondary to-secondary/55"
+                                      style={{ height: `${lessonBarHeight}px` }}
+                                    />
+                                  </div>
+                                  <div className="flex items-center gap-1 text-[11px] font-medium text-muted-foreground">
+                                    <PlayCircle className="h-3.5 w-3.5" />
+                                    Lecciones
+                                  </div>
+                                </div>
+                              </div>
+
+                              
+                            </div>
+                          </div>
+                        </div>
+                      </Link>
+                    )
+                  })}
                 </div>
                 {renderCatalogPagination()}
               </>
