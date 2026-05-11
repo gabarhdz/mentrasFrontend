@@ -66,6 +66,8 @@ type CourseSummary = {
   id?: string
   name?: string
   description?: string
+  author?: string
+  author_username?: string
   units?: UnitSummary[]
 }
 
@@ -194,9 +196,9 @@ const fetchUserProfile = async (userId: string) => {
   return (await response.json()) as UserProfile
 }
 
-const fetchMentorCourses = async () => {
+const fetchCourses = async () => {
   const response = await authFetch(buildBackendUrl('/api/learning/courses/'))
-  await ensureSuccessfulResponse(response, 'No se pudieron cargar tus cursos.')
+  await ensureSuccessfulResponse(response, 'No se pudieron cargar los cursos disponibles.')
   const data = await response.json()
   return normalizeCoursesResponse(data)
 }
@@ -274,14 +276,14 @@ const uploadFileToImageKit = async (
   })
 
   if (!response.ok) {
-    throw new Error(await getResponseErrorMessage(response, 'No se pudo subir el archivo a ImageKit.'))
+    throw new Error(await getResponseErrorMessage(response, 'No se pudo cargar el archivo.'))
   }
 
   const data = (await response.json()) as Record<string, unknown>
   const url = resolveUploadUrl(data)
 
   if (!url) {
-    throw new Error('ImageKit no devolvio una URL valida para el archivo.')
+    throw new Error('No pudimos terminar de preparar el archivo. Intentalo otra vez.')
   }
 
   return url
@@ -296,6 +298,8 @@ export default function Aprendizaje() {
   const [courses, setCourses] = useState<CourseSummary[]>([])
   const [selectedCourseId, setSelectedCourseId] = useState('')
   const [selectedUnitId, setSelectedUnitId] = useState('')
+  const [browseCourseId, setBrowseCourseId] = useState('')
+  const [browseUnitId, setBrowseUnitId] = useState('')
   const [courseForm, setCourseForm] = useState<CourseFormState>({
     name: '',
     description: '',
@@ -321,29 +325,30 @@ export default function Aprendizaje() {
   const [unitFeedback, setUnitFeedback] = useState<FeedbackState | null>(null)
   const [lessonFeedback, setLessonFeedback] = useState<FeedbackState | null>(null)
   const [lessonStatusMessage, setLessonStatusMessage] = useState(
-    'Sigue el orden: primero curso, despues unidad y al final la lesson.',
+    'Sigue el orden: primero el curso, despues la unidad y al final la leccion.',
   )
   const [steps, setSteps] = useState<StepState>(createInitialSteps())
   const [createdLesson, setCreatedLesson] = useState<LessonDetail | null>(null)
 
+  const ownedCourses = courses.filter((course) => course.author && user?.id && course.author === user.id)
   const selectedCourse =
-    courses.find((course) => course.id === selectedCourseId) ?? null
+    ownedCourses.find((course) => course.id === selectedCourseId) ?? null
   const selectedUnits = selectedCourse?.units ?? []
   const selectedUnit =
     selectedUnits.find((unit) => unit.id === selectedUnitId) ?? null
-  const totalUnits = courses.reduce((total, course) => total + (course.units?.length ?? 0), 0)
-  const totalLessons = courses.reduce((total, course) => total + countLessons(course.units), 0)
+  const ownTotalUnits = ownedCourses.reduce((total, course) => total + (course.units?.length ?? 0), 0)
+  const ownTotalLessons = ownedCourses.reduce((total, course) => total + countLessons(course.units), 0)
 
   const completedSteps = [
     {
       label: 'Preparamos la subida',
       done: steps.uploadAuth,
-      description: 'Pedimos la firma segura para subir archivos.',
+      description: 'Preparamos todo para cargar tus archivos de forma segura.',
     },
     {
       label: 'Subimos el video',
       done: steps.videoUpload,
-      description: 'El archivo viaja directo a ImageKit.',
+      description: 'Tu video se esta cargando.',
     },
     {
       label: 'Adjuntamos el PDF',
@@ -351,16 +356,16 @@ export default function Aprendizaje() {
       description: pdfFile ? 'Sumamos el material complementario.' : 'Este paso se omite si no agregas PDF.',
     },
     {
-      label: 'Creamos la lesson',
+      label: 'Creamos la leccion',
       done: steps.lessonCreate,
-      description: 'Guardamos el contenido dentro de Mentras.',
+      description: 'Guardamos el contenido en tu espacio de aprendizaje.',
     },
   ]
 
   const completedCount = completedSteps.filter((step) => step.done).length
   const progressLabel = `${completedCount}/${completedSteps.length} pasos listos`
   const workflowChips = ['Course', 'Unit', 'Lesson']
-  const courseCount = courses.length
+  const ownCourseCount = ownedCourses.length
 
   const syncCourseTree = (
     nextCourses: CourseSummary[],
@@ -368,38 +373,55 @@ export default function Aprendizaje() {
   ) => {
     const preferredCourseId = options?.preferredCourseId
     const preferredUnitId = options?.preferredUnitId
+    const nextOwnedCourses = nextCourses.filter((course) => course.author && user?.id && course.author === user.id)
     const matchingCourse =
+      nextOwnedCourses.find((course) => course.id === preferredCourseId) ??
+      nextOwnedCourses.find((course) => course.id === selectedCourseId) ??
+      nextOwnedCourses[0] ??
+      null
+    const browseMatchingCourse =
       nextCourses.find((course) => course.id === preferredCourseId) ??
-      nextCourses.find((course) => course.id === selectedCourseId) ??
+      nextCourses.find((course) => course.id === browseCourseId) ??
       nextCourses[0] ??
       null
     const nextCourseId = matchingCourse?.id ?? ''
     const nextUnits = matchingCourse?.units ?? []
+    const nextBrowseCourseId = browseMatchingCourse?.id ?? ''
+    const nextBrowseUnits = browseMatchingCourse?.units ?? []
     const matchingUnit =
       nextUnits.find((unit) => unit.id === preferredUnitId) ??
       nextUnits.find((unit) => unit.id === selectedUnitId) ??
       nextUnits[0] ??
       null
+    const browseMatchingUnit =
+      nextBrowseUnits.find((unit) => unit.id === preferredUnitId) ??
+      nextBrowseUnits.find((unit) => unit.id === browseUnitId) ??
+      nextBrowseUnits[0] ??
+      null
 
     setCourses(nextCourses)
     setSelectedCourseId(nextCourseId)
     setSelectedUnitId(matchingUnit?.id ?? '')
+    setBrowseCourseId(nextBrowseCourseId)
+    setBrowseUnitId(browseMatchingUnit?.id ?? '')
     setCoursesError(null)
   }
 
   const loadCourses = async (options?: { preferredCourseId?: string; preferredUnitId?: string }) => {
     try {
       setIsLoadingCourses(true)
-      const nextCourses = await fetchMentorCourses()
+      const nextCourses = await fetchCourses()
       syncCourseTree(nextCourses, options)
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : 'No se pudieron cargar tus cursos.'
+        error instanceof Error ? error.message : 'No se pudieron cargar los cursos disponibles.'
 
       if (message !== 'Tu sesion vencio. Inicia sesion otra vez.') {
         setCourses([])
         setSelectedCourseId('')
         setSelectedUnitId('')
+        setBrowseCourseId('')
+        setBrowseUnitId('')
         setCoursesError(message)
       }
     } finally {
@@ -408,7 +430,7 @@ export default function Aprendizaje() {
   }
 
   const handleCourseSelection = (courseId: string) => {
-    const nextCourse = courses.find((course) => course.id === courseId) ?? null
+    const nextCourse = ownedCourses.find((course) => course.id === courseId) ?? null
     setSelectedCourseId(courseId)
     setSelectedUnitId(nextCourse?.units?.[0]?.id ?? '')
     setUnitFeedback(null)
@@ -418,6 +440,16 @@ export default function Aprendizaje() {
   const handleUnitSelection = (unitId: string) => {
     setSelectedUnitId(unitId)
     setLessonFeedback(null)
+  }
+
+  const handleBrowseCourseSelection = (courseId: string) => {
+    const nextCourse = courses.find((course) => course.id === courseId) ?? null
+    setBrowseCourseId(courseId)
+    setBrowseUnitId(nextCourse?.units?.[0]?.id ?? '')
+  }
+
+  const handleBrowseUnitSelection = (unitId: string) => {
+    setBrowseUnitId(unitId)
   }
 
   const handleCourseFormChange = (field: keyof CourseFormState, value: string) => {
@@ -484,16 +516,13 @@ export default function Aprendizaje() {
   }, [userId])
 
   useEffect(() => {
-    if (!user?.is_mentor) {
-      setCourses([])
-      setSelectedCourseId('')
-      setSelectedUnitId('')
+    if (!user) {
       setIsLoadingCourses(false)
       return
     }
 
     void loadCourses()
-  }, [user?.is_mentor])
+  }, [user])
 
   const handleCreateCourse = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -573,7 +602,7 @@ export default function Aprendizaje() {
       })
       setUnitFeedback({
         type: 'success',
-        message: 'Unidad creada. Ya puedes cargar lessons dentro de ella.',
+        message: 'Unidad creada. Ya puedes agregar lecciones dentro de ella.',
       })
     } catch (error) {
       const message = error instanceof Error ? error.message : 'No se pudo crear la unidad.'
@@ -592,7 +621,7 @@ export default function Aprendizaje() {
     if (!user?.is_mentor) {
       setLessonFeedback({
         type: 'error',
-        message: 'Solo las cuentas mentor pueden crear lessons desde esta pantalla.',
+        message: 'Solo las cuentas con permiso de creador pueden usar esta seccion.',
       })
       return
     }
@@ -600,7 +629,7 @@ export default function Aprendizaje() {
     if (!selectedCourseId) {
       setLessonFeedback({
         type: 'error',
-        message: 'Selecciona un curso antes de crear una lesson.',
+        message: 'Selecciona un curso antes de crear la leccion.',
       })
       return
     }
@@ -608,7 +637,7 @@ export default function Aprendizaje() {
     if (!selectedUnitId) {
       setLessonFeedback({
         type: 'error',
-        message: 'Selecciona una unidad antes de crear una lesson.',
+        message: 'Selecciona una unidad antes de crear la leccion.',
       })
       return
     }
@@ -616,7 +645,7 @@ export default function Aprendizaje() {
     if (!lessonForm.title.trim()) {
       setLessonFeedback({
         type: 'error',
-        message: 'Agrega un titulo para la lesson.',
+        message: 'Agrega un titulo para la leccion.',
       })
       return
     }
@@ -624,7 +653,7 @@ export default function Aprendizaje() {
     if (!videoFile) {
       setLessonFeedback({
         type: 'error',
-        message: 'Sube un video antes de guardar la lesson.',
+        message: 'Sube un video antes de guardar la leccion.',
       })
       return
     }
@@ -635,9 +664,9 @@ export default function Aprendizaje() {
     setSteps(createInitialSteps())
 
     try {
-      setLessonStatusMessage('Preparando la subida segura del material...')
+      setLessonStatusMessage('Preparando tus materiales...')
       const authResponse = await authFetch(buildBackendUrl('/api/learning/uploads/auth/'))
-      await ensureSuccessfulResponse(authResponse, 'No se pudo obtener la firma de upload.')
+      await ensureSuccessfulResponse(authResponse, 'No se pudo preparar la carga de archivos.')
 
       const uploadAuth = (await authResponse.json()) as UploadAuthResponse
       setSteps((currentSteps) => ({ ...currentSteps, uploadAuth: true }))
@@ -653,7 +682,7 @@ export default function Aprendizaje() {
       let pdfUrl: string | null = null
 
       if (pdfFile) {
-        setLessonStatusMessage('Subiendo el PDF complementario...')
+        setLessonStatusMessage('Subiendo el material complementario...')
         pdfUrl = await uploadFileToImageKit(
           pdfFile,
           uploadAuth,
@@ -662,7 +691,7 @@ export default function Aprendizaje() {
         setSteps((currentSteps) => ({ ...currentSteps, pdfUpload: true }))
       }
 
-      setLessonStatusMessage('Creando la lesson dentro de Mentras...')
+      setLessonStatusMessage('Guardando la leccion...')
       const lessonResponse = await authFetch(
         buildBackendUrl(`/api/learning/units/${selectedUnitId}/lessons/`),
         {
@@ -679,16 +708,16 @@ export default function Aprendizaje() {
         },
       )
 
-      await ensureSuccessfulResponse(lessonResponse, 'No se pudo crear la lesson en el backend.')
+      await ensureSuccessfulResponse(lessonResponse, 'No se pudo guardar la leccion.')
 
       const lesson = (await lessonResponse.json()) as LessonDetail
       setSteps((currentSteps) => ({ ...currentSteps, lessonCreate: true }))
       setCreatedLesson(lesson)
       setLessonFeedback({
         type: 'success',
-        message: 'Lesson creada correctamente. El material ya quedo enlazado.',
+        message: 'Leccion creada correctamente. El material ya quedo listo.',
       })
-      setLessonStatusMessage('Todo quedo listo. Tu lesson ya forma parte de la jerarquia.')
+      setLessonStatusMessage('Todo quedo listo. Tu leccion ya aparece dentro del contenido.')
       setLessonForm({
         title: '',
         content: '',
@@ -705,7 +734,7 @@ export default function Aprendizaje() {
         type: 'error',
         message,
       })
-      setLessonStatusMessage('El proceso se detuvo antes de completar la lesson.')
+      setLessonStatusMessage('El proceso se detuvo antes de completar la leccion.')
     } finally {
       setIsSubmittingLesson(false)
     }
@@ -774,11 +803,11 @@ export default function Aprendizaje() {
                   Aprendizaje
                 </div>
                 <h1 className="max-w-2xl text-4xl font-semibold tracking-tight text-balance md:text-5xl">
-                  Esta cuenta no puede crear courses, units ni lessons
+                  Esta cuenta no puede crear contenido desde aqui
                 </h1>
                 <p className="mt-4 max-w-2xl text-sm leading-6 text-muted-foreground md:text-base">
-                  Revisamos tu perfil y `is_mentor` viene en `false`, asi que ocultamos toda la
-                  interfaz de creacion para respetar la jerarquia del backend.
+                  Esta seccion de creacion solo esta disponible para ciertas cuentas, asi que te
+                  mostramos una vista simple y sin opciones que no puedas usar.
                 </p>
               </div>
 
@@ -786,33 +815,86 @@ export default function Aprendizaje() {
                 <div className="rounded-[1.5rem] border border-border/70 bg-background/70 p-5">
                   <p className="text-sm font-semibold text-foreground">Modo lectura</p>
                   <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                    Desde esta cuenta solo deberias consultar cursos cuando el backend exponga ese
-                    listado para usuarios no mentor.
+                    Desde esta cuenta puedes navegar el espacio de aprendizaje, pero no crear nuevo contenido.
                   </p>
                 </div>
 
                 <div className="rounded-[1.5rem] border border-border/70 bg-background/70 p-5">
-                  <p className="text-sm font-semibold text-foreground">Estado actual del backend</p>
+                  <p className="text-sm font-semibold text-foreground">Como funciona</p>
                   <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                    `GET /api/learning/courses/` todavia esta protegido con `IsMentor`, asi que no
-                    intentamos consumirlo con una cuenta comun.
+                    Si en algun momento tu cuenta recibe permisos de creador, aqui mismo podras armar cursos,
+                    unidades y lecciones paso a paso.
                   </p>
                 </div>
               </div>
             </section>
 
-            <aside className="rounded-[2rem] border border-border/70 bg-card/92 p-6 backdrop-blur">
-              <p className="text-xs font-medium tracking-[0.24em] text-muted-foreground uppercase">
-                Jerarquia
-              </p>
-              <h2 className="mt-2 text-xl font-semibold tracking-tight">Como funciona el flujo</h2>
-              <div className="mt-4 space-y-3">
-                {workflowChips.map((step, index) => (
-                  <div key={step} className="rounded-2xl border border-border/70 bg-background/70 p-4">
-                    <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Paso {index + 1}</p>
-                    <p className="mt-1 text-sm font-semibold text-foreground">{step}</p>
+            <aside className="space-y-5">
+              <div className="rounded-[2rem] border border-border/70 bg-card/92 p-6 backdrop-blur">
+                <p className="text-xs font-medium tracking-[0.24em] text-muted-foreground uppercase">
+                  Jerarquia
+                </p>
+                <h2 className="mt-2 text-xl font-semibold tracking-tight">Como funciona el flujo</h2>
+                <div className="mt-4 space-y-3">
+                  {workflowChips.map((step, index) => (
+                    <div key={step} className="rounded-2xl border border-border/70 bg-background/70 p-4">
+                      <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Paso {index + 1}</p>
+                      <p className="mt-1 text-sm font-semibold text-foreground">
+                        {step === 'Course' ? 'Curso' : step === 'Unit' ? 'Unidad' : 'Leccion'}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-[2rem] border border-border/70 bg-card/92 p-6 backdrop-blur">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-medium tracking-[0.24em] text-muted-foreground uppercase">
+                      Catalogo
+                    </p>
+                    <h2 className="mt-2 text-xl font-semibold tracking-tight">Cursos disponibles</h2>
                   </div>
-                ))}
+                  {isLoadingCourses ? <LoaderCircle className="h-4 w-4 animate-spin text-muted-foreground" /> : null}
+                </div>
+
+                {coursesError ? (
+                  <div className="mt-4 rounded-[1.5rem] border border-accent/30 bg-accent/10 p-4 text-sm text-foreground">
+                    {coursesError}
+                  </div>
+                ) : null}
+
+                {!courses.length && !isLoadingCourses ? (
+                  <div className="mt-4 rounded-[1.5rem] border border-border/70 bg-background/70 p-4 text-sm leading-6 text-muted-foreground">
+                    Todavia no hay cursos disponibles para mostrar.
+                  </div>
+                ) : (
+                  <div className="mt-4 space-y-3">
+                    {courses.map((course) => (
+                      <article key={course.id ?? course.name} className="rounded-[1.5rem] border border-border/70 bg-background/70 p-4">
+                        <p className="text-sm font-semibold text-foreground">
+                          {course.name || 'Curso sin nombre'}
+                        </p>
+                        <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                          {course.description?.trim() || 'Este curso aun no tiene descripcion.'}
+                        </p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <span className="rounded-full border border-border/70 px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
+                            {course.units?.length ?? 0} unidades
+                          </span>
+                          <span className="rounded-full border border-border/70 px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
+                            {countLessons(course.units)} lecciones
+                          </span>
+                          {course.author_username ? (
+                            <span className="rounded-full border border-border/70 px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
+                              Por {course.author_username}
+                            </span>
+                          ) : null}
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                )}
               </div>
             </aside>
           </div>
@@ -840,11 +922,11 @@ export default function Aprendizaje() {
                   Espacio mentor
                 </div>
                 <h1 className="max-w-3xl text-4xl font-semibold tracking-tight text-balance md:text-5xl">
-                  Crea tu contenido con la jerarquia correcta: course, unit y lesson
+                  Crea tu contenido paso a paso: curso, unidad y leccion
                 </h1>
                 <p className="mt-4 max-w-3xl text-sm leading-6 text-muted-foreground md:text-base">
                   Esta vista te acompana paso a paso. Primero creas el curso, luego organizas las
-                  unidades y al final subes cada lesson con sus archivos.
+                  unidades y al final agregas cada leccion con sus materiales.
                 </p>
                 <div className="mt-5 flex flex-wrap gap-2">
                   {workflowChips.map((chip) => (
@@ -852,7 +934,7 @@ export default function Aprendizaje() {
                       key={chip}
                       className="rounded-full border border-border/70 bg-background/80 px-3 py-1 text-xs font-medium text-muted-foreground"
                     >
-                      {chip}
+                      {chip === 'Course' ? 'Curso' : chip === 'Unit' ? 'Unidad' : 'Leccion'}
                     </span>
                   ))}
                 </div>
@@ -861,21 +943,21 @@ export default function Aprendizaje() {
               <div className="grid gap-3 px-7 py-7 md:grid-cols-3">
                 <div className="rounded-[1.5rem] border border-border/70 bg-background/70 p-4">
                   <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Paso 1</p>
-                  <p className="mt-2 text-base font-semibold text-foreground">Course</p>
+                  <p className="mt-2 text-base font-semibold text-foreground">Curso</p>
                   <p className="mt-2 text-sm leading-6 text-muted-foreground">
                     Define el contenedor principal del contenido.
                   </p>
                 </div>
                 <div className="rounded-[1.5rem] border border-border/70 bg-background/70 p-4">
                   <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Paso 2</p>
-                  <p className="mt-2 text-base font-semibold text-foreground">Unit</p>
+                  <p className="mt-2 text-base font-semibold text-foreground">Unidad</p>
                   <p className="mt-2 text-sm leading-6 text-muted-foreground">
                     Organiza el curso en bloques claros y manejables.
                   </p>
                 </div>
                 <div className="rounded-[1.5rem] border border-border/70 bg-background/70 p-4">
                   <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Paso 3</p>
-                  <p className="mt-2 text-base font-semibold text-foreground">Lesson</p>
+                  <p className="mt-2 text-base font-semibold text-foreground">Leccion</p>
                   <p className="mt-2 text-sm leading-6 text-muted-foreground">
                     Publica la clase final con video, texto y PDF opcional.
                   </p>
@@ -889,7 +971,7 @@ export default function Aprendizaje() {
                   <p className="text-xs font-medium tracking-[0.24em] text-muted-foreground uppercase">
                     Paso 1
                   </p>
-                  <h2 className="mt-1 text-2xl font-semibold tracking-tight">Crea el course</h2>
+                  <h2 className="mt-1 text-2xl font-semibold tracking-tight">Crea el curso</h2>
                 </div>
                 <span className="rounded-full border border-border/70 bg-background/80 px-3 py-1 text-xs font-medium text-muted-foreground">
                   Base de toda la estructura
@@ -898,7 +980,7 @@ export default function Aprendizaje() {
 
               <form className="mt-6 space-y-5" onSubmit={handleCreateCourse}>
                 <label className="space-y-2">
-                  <span className="text-sm font-medium text-foreground">Nombre del course</span>
+                  <span className="text-sm font-medium text-foreground">Nombre del curso</span>
                   <input
                     className="w-full rounded-2xl border border-border bg-background px-4 py-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
                     placeholder="Ej. Ventas para pymes"
@@ -908,10 +990,10 @@ export default function Aprendizaje() {
                 </label>
 
                 <label className="space-y-2">
-                  <span className="text-sm font-medium text-foreground">Descripcion del course</span>
+                  <span className="text-sm font-medium text-foreground">Descripcion del curso</span>
                   <textarea
                     className="min-h-32 w-full rounded-[1.5rem] border border-border bg-background px-4 py-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
-                    placeholder="Cuenta brevemente que aprende la persona dentro de este course"
+                    placeholder="Cuenta brevemente que va a aprender la persona en este curso"
                     value={courseForm.description}
                     onChange={(event) => handleCourseFormChange('description', event.target.value)}
                   />
@@ -936,7 +1018,7 @@ export default function Aprendizaje() {
                     type="submit"
                   >
                     {isCreatingCourse ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <CircleCheckBig className="h-4 w-4" />}
-                    {isCreatingCourse ? 'Guardando...' : 'Crear course'}
+                    {isCreatingCourse ? 'Guardando...' : 'Crear curso'}
                   </button>
                 </div>
               </form>
@@ -948,27 +1030,27 @@ export default function Aprendizaje() {
                   <p className="text-xs font-medium tracking-[0.24em] text-muted-foreground uppercase">
                     Paso 2
                   </p>
-                  <h2 className="mt-1 text-2xl font-semibold tracking-tight">Agrega una unit</h2>
+                  <h2 className="mt-1 text-2xl font-semibold tracking-tight">Agrega una unidad</h2>
                 </div>
                 <span className="rounded-full border border-border/70 bg-background/80 px-3 py-1 text-xs font-medium text-muted-foreground">
-                  {selectedCourse ? `Curso activo: ${selectedCourse.name || 'Sin nombre'}` : 'Primero crea un course'}
+                  {selectedCourse ? `Curso activo: ${selectedCourse.name || 'Sin nombre'}` : 'Primero crea un curso'}
                 </span>
               </div>
 
-              {!courses.length ? (
+              {!ownedCourses.length ? (
                 <div className="mt-6 rounded-[1.5rem] border border-border/70 bg-background/70 p-5 text-sm leading-6 text-muted-foreground">
-                  Cuando tengas al menos un course creado, aqui podras sumar las units.
+                  Cuando tengas al menos un curso creado, aqui podras sumar las unidades.
                 </div>
               ) : (
                 <form className="mt-6 space-y-5" onSubmit={handleCreateUnit}>
                   <label className="space-y-2">
-                    <span className="text-sm font-medium text-foreground">Course donde ira esta unit</span>
+                    <span className="text-sm font-medium text-foreground">Curso donde ira esta unidad</span>
                     <select
                       className="w-full rounded-2xl border border-border bg-background px-4 py-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
                       value={selectedCourseId}
                       onChange={(event) => handleCourseSelection(event.target.value)}
                     >
-                      {courses.map((course) => (
+                      {ownedCourses.map((course) => (
                         <option key={course.id ?? course.name} value={course.id ?? ''}>
                           {course.name || 'Curso sin nombre'}
                         </option>
@@ -977,7 +1059,7 @@ export default function Aprendizaje() {
                   </label>
 
                   <label className="space-y-2">
-                    <span className="text-sm font-medium text-foreground">Titulo de la unit</span>
+                    <span className="text-sm font-medium text-foreground">Titulo de la unidad</span>
                     <input
                       className="w-full rounded-2xl border border-border bg-background px-4 py-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
                       placeholder="Ej. Fundamentos del tema"
@@ -987,10 +1069,10 @@ export default function Aprendizaje() {
                   </label>
 
                   <label className="space-y-2">
-                    <span className="text-sm font-medium text-foreground">Descripcion de la unit</span>
+                    <span className="text-sm font-medium text-foreground">Descripcion de la unidad</span>
                     <textarea
                       className="min-h-28 w-full rounded-[1.5rem] border border-border bg-background px-4 py-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
-                      placeholder="Resume que se cubre dentro de esta unit"
+                      placeholder="Resume que se cubre dentro de esta unidad"
                       value={unitForm.description}
                       onChange={(event) => handleUnitFormChange('description', event.target.value)}
                     />
@@ -1015,7 +1097,7 @@ export default function Aprendizaje() {
                       type="submit"
                     >
                       {isCreatingUnit ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <CircleCheckBig className="h-4 w-4" />}
-                      {isCreatingUnit ? 'Guardando...' : 'Crear unit'}
+                      {isCreatingUnit ? 'Guardando...' : 'Crear unidad'}
                     </button>
                   </div>
                 </form>
@@ -1028,32 +1110,32 @@ export default function Aprendizaje() {
                   <p className="text-xs font-medium tracking-[0.24em] text-muted-foreground uppercase">
                     Paso 3
                   </p>
-                  <h2 className="mt-1 text-2xl font-semibold tracking-tight">Crea la lesson</h2>
+                  <h2 className="mt-1 text-2xl font-semibold tracking-tight">Crea la leccion</h2>
                 </div>
                 <span className="rounded-full border border-border/70 bg-background/80 px-3 py-1 text-xs font-medium text-muted-foreground">
-                  {selectedUnit ? `Unidad activa: ${selectedUnit.title || 'Sin titulo'}` : 'Selecciona una unit'}
+                  {selectedUnit ? `Unidad activa: ${selectedUnit.title || 'Sin titulo'}` : 'Selecciona una unidad'}
                 </span>
               </div>
 
-              {!courses.length ? (
+              {!ownedCourses.length ? (
                 <div className="mt-6 rounded-[1.5rem] border border-border/70 bg-background/70 p-5 text-sm leading-6 text-muted-foreground">
-                  Crea primero un course para habilitar la configuracion de la lesson.
+                  Crea primero un curso para habilitar la configuracion de la leccion.
                 </div>
               ) : !selectedUnits.length ? (
                 <div className="mt-6 rounded-[1.5rem] border border-border/70 bg-background/70 p-5 text-sm leading-6 text-muted-foreground">
-                  Este course aun no tiene units. Crea una unit y luego vuelve a este paso.
+                  Este curso aun no tiene unidades. Crea una unidad y luego vuelve a este paso.
                 </div>
               ) : (
                 <form className="mt-6 space-y-6" onSubmit={handleCreateLesson}>
                   <div className="grid gap-5 md:grid-cols-2">
                     <label className="space-y-2">
-                      <span className="text-sm font-medium text-foreground">Course de la lesson</span>
+                      <span className="text-sm font-medium text-foreground">Curso de la leccion</span>
                       <select
                         className="w-full rounded-2xl border border-border bg-background px-4 py-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
                         value={selectedCourseId}
                         onChange={(event) => handleCourseSelection(event.target.value)}
                       >
-                        {courses.map((course) => (
+                        {ownedCourses.map((course) => (
                           <option key={course.id ?? course.name} value={course.id ?? ''}>
                             {course.name || 'Curso sin nombre'}
                           </option>
@@ -1062,7 +1144,7 @@ export default function Aprendizaje() {
                     </label>
 
                     <label className="space-y-2">
-                      <span className="text-sm font-medium text-foreground">Unit donde ira la lesson</span>
+                      <span className="text-sm font-medium text-foreground">Unidad donde ira la leccion</span>
                       <select
                         className="w-full rounded-2xl border border-border bg-background px-4 py-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
                         value={selectedUnitId}
@@ -1078,7 +1160,7 @@ export default function Aprendizaje() {
                   </div>
 
                   <div className="rounded-[1.5rem] border border-border/70 bg-background/70 p-4 text-sm text-muted-foreground">
-                    La lesson se va a crear dentro de{' '}
+                    La leccion se va a crear dentro de{' '}
                     <span className="font-semibold text-foreground">
                       {selectedCourse?.name || 'Sin curso'}
                     </span>{' '}
@@ -1091,7 +1173,7 @@ export default function Aprendizaje() {
 
                   <div className="grid gap-5 md:grid-cols-2">
                     <label className="space-y-2">
-                      <span className="text-sm font-medium text-foreground">Titulo de la lesson</span>
+                      <span className="text-sm font-medium text-foreground">Titulo de la leccion</span>
                       <input
                         className="w-full rounded-2xl border border-border bg-background px-4 py-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
                         placeholder="Ej. Introduccion al modulo"
@@ -1104,17 +1186,17 @@ export default function Aprendizaje() {
                       <p className="text-sm font-medium text-foreground">Estado de la seleccion</p>
                       <p className="mt-2 text-sm leading-6 text-muted-foreground">
                         {selectedUnit?.lessons?.length
-                          ? `Esta unit ya tiene ${selectedUnit.lessons.length} lesson(s).`
-                          : 'Esta unit todavia no tiene lessons.'}
+                          ? `Esta unidad ya tiene ${selectedUnit.lessons.length} leccion(es).`
+                          : 'Esta unidad todavia no tiene lecciones.'}
                       </p>
                     </div>
                   </div>
 
                   <label className="space-y-2">
-                    <span className="text-sm font-medium text-foreground">Descripcion o contenido</span>
+                      <span className="text-sm font-medium text-foreground">Descripcion o contenido</span>
                     <textarea
                       className="min-h-36 w-full rounded-[1.5rem] border border-border bg-background px-4 py-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
-                      placeholder="Agrega un resumen, guia o notas para esta lesson"
+                      placeholder="Agrega un resumen, guia o notas para esta leccion"
                       value={lessonForm.content}
                       onChange={(event) => handleLessonFormChange('content', event.target.value)}
                     />
@@ -1140,7 +1222,7 @@ export default function Aprendizaje() {
                         <div>
                           <p className="text-sm font-semibold text-foreground">Video principal</p>
                           <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                            Este archivo es obligatorio y se sube directo a ImageKit.
+                            Este archivo es obligatorio para completar la leccion.
                           </p>
                         </div>
                       </div>
@@ -1224,7 +1306,7 @@ export default function Aprendizaje() {
                       type="submit"
                     >
                       {isSubmittingLesson ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <CircleCheckBig className="h-4 w-4" />}
-                      {isSubmittingLesson ? 'Procesando...' : 'Crear lesson'}
+                      {isSubmittingLesson ? 'Procesando...' : 'Crear leccion'}
                     </button>
                   </div>
                 </form>
@@ -1240,16 +1322,16 @@ export default function Aprendizaje() {
               <h2 className="mt-2 text-xl font-semibold tracking-tight">Tu estructura actual</h2>
               <div className="mt-4 grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
                 <div className="rounded-2xl border border-border/70 bg-background/70 p-4">
-                  <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Courses</p>
-                  <p className="mt-2 text-2xl font-semibold text-foreground">{courseCount}</p>
+                  <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Cursos propios</p>
+                  <p className="mt-2 text-2xl font-semibold text-foreground">{ownCourseCount}</p>
                 </div>
                 <div className="rounded-2xl border border-border/70 bg-background/70 p-4">
-                  <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Units</p>
-                  <p className="mt-2 text-2xl font-semibold text-foreground">{totalUnits}</p>
+                  <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Unidades propias</p>
+                  <p className="mt-2 text-2xl font-semibold text-foreground">{ownTotalUnits}</p>
                 </div>
                 <div className="rounded-2xl border border-border/70 bg-background/70 p-4">
-                  <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Lessons</p>
-                  <p className="mt-2 text-2xl font-semibold text-foreground">{totalLessons}</p>
+                  <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Lecciones propias</p>
+                  <p className="mt-2 text-2xl font-semibold text-foreground">{ownTotalLessons}</p>
                 </div>
               </div>
 
@@ -1257,11 +1339,11 @@ export default function Aprendizaje() {
                 <p className="text-sm font-semibold text-foreground">Ruta seleccionada</p>
                 <p className="mt-2 text-sm leading-6 text-muted-foreground">
                   <span className="font-medium text-foreground">
-                    {selectedCourse?.name || 'Sin course'}
+                    {selectedCourse?.name || 'Sin curso propio'}
                   </span>{' '}
                   /{' '}
                   <span className="font-medium text-foreground">
-                    {selectedUnit?.title || 'Sin unit'}
+                    {selectedUnit?.title || 'Sin unidad propia'}
                   </span>
                 </p>
               </div>
@@ -1271,9 +1353,9 @@ export default function Aprendizaje() {
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-xs font-medium tracking-[0.24em] text-muted-foreground uppercase">
-                    Jerarquia
+                    Catalogo
                   </p>
-                  <h2 className="mt-2 text-xl font-semibold tracking-tight">Explora y selecciona</h2>
+                  <h2 className="mt-2 text-xl font-semibold tracking-tight">Explora todos los cursos</h2>
                 </div>
                 {isLoadingCourses ? <LoaderCircle className="h-4 w-4 animate-spin text-muted-foreground" /> : null}
               </div>
@@ -1293,7 +1375,7 @@ export default function Aprendizaje() {
                   {courses.map((course) => {
                     const courseId = course.id ?? ''
                     const units = course.units ?? []
-                    const isSelectedCourse = courseId === selectedCourseId
+                    const isSelectedCourse = courseId === browseCourseId
 
                     return (
                       <article
@@ -1307,7 +1389,7 @@ export default function Aprendizaje() {
                         <button
                           className="w-full text-left"
                           type="button"
-                          onClick={() => handleCourseSelection(courseId)}
+                          onClick={() => handleBrowseCourseSelection(courseId)}
                         >
                           <div className="flex flex-wrap items-start justify-between gap-3">
                             <div>
@@ -1315,15 +1397,20 @@ export default function Aprendizaje() {
                                 {course.name || 'Curso sin nombre'}
                               </p>
                               <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                                {course.description?.trim() || 'Este course aun no tiene descripcion.'}
+                                {course.description?.trim() || 'Este curso aun no tiene descripcion.'}
                               </p>
+                              {course.author_username ? (
+                                <p className="mt-2 text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                                  Creado por {course.author_username}
+                                </p>
+                              ) : null}
                             </div>
                             <div className="flex flex-wrap gap-2">
                               <span className="rounded-full border border-border/70 px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
-                                {units.length} units
+                                {units.length} unidades
                               </span>
                               <span className="rounded-full border border-border/70 px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
-                                {countLessons(units)} lessons
+                                {countLessons(units)} lecciones
                               </span>
                             </div>
                           </div>
@@ -1334,7 +1421,7 @@ export default function Aprendizaje() {
                             {units.length ? (
                               units.map((unit) => {
                                 const unitId = unit.id ?? ''
-                                const isSelectedUnit = unitId === selectedUnitId
+                                const isSelectedUnit = unitId === browseUnitId
 
                                 return (
                                   <div key={unit.id ?? unit.title} className="space-y-2">
@@ -1345,7 +1432,7 @@ export default function Aprendizaje() {
                                           : 'border-border/70 bg-background/80'
                                       }`}
                                       type="button"
-                                      onClick={() => handleUnitSelection(unitId)}
+                                      onClick={() => handleBrowseUnitSelection(unitId)}
                                     >
                                       <div className="flex items-start justify-between gap-3">
                                         <div>
@@ -1353,11 +1440,11 @@ export default function Aprendizaje() {
                                             {unit.title || 'Unidad sin titulo'}
                                           </p>
                                           <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                                            {unit.description?.trim() || 'Esta unit aun no tiene descripcion.'}
+                                            {unit.description?.trim() || 'Esta unidad aun no tiene descripcion.'}
                                           </p>
                                         </div>
                                         <span className="rounded-full border border-border/70 px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
-                                          {unit.lessons?.length ?? 0} lessons
+                                          {unit.lessons?.length ?? 0} lecciones
                                         </span>
                                       </div>
                                     </button>
@@ -1371,13 +1458,13 @@ export default function Aprendizaje() {
                                               className="rounded-2xl border border-border/70 bg-background/70 px-4 py-3"
                                             >
                                               <p className="text-sm font-medium text-foreground">
-                                                {lesson.title || `Lesson ${index + 1}`}
+                                                {lesson.title || `Leccion ${index + 1}`}
                                               </p>
                                             </div>
                                           ))
                                         ) : (
                                           <div className="rounded-2xl border border-border/70 bg-background/70 px-4 py-3 text-sm text-muted-foreground">
-                                            Esta unit todavia no tiene lessons.
+                                            Esta unidad todavia no tiene lecciones.
                                           </div>
                                         )}
                                       </div>
@@ -1387,7 +1474,7 @@ export default function Aprendizaje() {
                               })
                             ) : (
                               <div className="rounded-2xl border border-border/70 bg-background/70 px-4 py-3 text-sm text-muted-foreground">
-                                Este course todavia no tiene units.
+                                Este curso todavia no tiene unidades.
                               </div>
                             )}
                           </div>
@@ -1403,7 +1490,7 @@ export default function Aprendizaje() {
               <p className="text-xs font-medium tracking-[0.24em] text-muted-foreground uppercase">
                 Progreso de subida
               </p>
-              <h2 className="mt-2 text-xl font-semibold tracking-tight">Estado de la lesson</h2>
+              <h2 className="mt-2 text-xl font-semibold tracking-tight">Estado de la leccion</h2>
               <div className="mt-5 space-y-3">
                 {completedSteps.map((step, index) => (
                   <div
@@ -1437,7 +1524,7 @@ export default function Aprendizaje() {
                 <p className="text-xs font-medium tracking-[0.24em] text-muted-foreground uppercase">
                   Resultado
                 </p>
-                <h2 className="mt-2 text-xl font-semibold tracking-tight">La lesson ya quedo creada</h2>
+                <h2 className="mt-2 text-xl font-semibold tracking-tight">La leccion ya quedo creada</h2>
                 <div className="mt-4 space-y-2 text-sm">
                   <p>
                     <span className="font-medium text-foreground">Titulo:</span>{' '}
