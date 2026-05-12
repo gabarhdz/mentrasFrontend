@@ -4,47 +4,35 @@ export type ForumImage = {
   alt: string
 }
 
-export type ForumAuthor = {
+export type ForumRecord = {
+  id: string
   name: string
-  role: string
-  handle: string
-  initials: string
+  description: string
+  profilePic: string
+  isPrivate: boolean
+  createdAt: string
 }
 
-export type ForumPostMetrics = {
-  replies: number
-  likes: number
-  views: number
+export type ForumAuthor = {
+  id: string
+  username: string
+  profilePic: string
+  roleLabel: string
+  initials: string
 }
 
 export type ForumPost = {
   id: string
-  forumName: string
-  topic: string
   title: string
-  excerpt: string
+  text: string
   createdAt: string
-  isPinned?: boolean
-  tags: string[]
-  author: ForumAuthor
+  forumId: string | null
   images: ForumImage[]
-  metrics: ForumPostMetrics
+  author: ForumAuthor
 }
 
-export type ForumTopic = {
-  id: string
-  label: string
-  description: string
-  count: number
-}
-
-export type CommunityStat = {
-  label: string
-  value: string
-  detail: string
-}
-
-export type SidebarHighlight = {
+export type ForumComposerPayload = {
   title: string
-  description: string
+  text: string
+  imageUrls: string[]
 }
