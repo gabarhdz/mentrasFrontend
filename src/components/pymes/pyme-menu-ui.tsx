@@ -2,10 +2,12 @@ import { useState, type FormEventHandler, type ReactNode } from 'react'
 import {
   ChevronDown,
   Clock3,
+  Download,
   Eye,
   LoaderCircle,
   Package2,
   PlusCircle,
+  Share2,
   type LucideIcon,
   X,
 } from 'lucide-react'
@@ -25,6 +27,11 @@ import {
   getStockTone,
   resolveMediaUrl,
 } from '@/components/pymes/pyme-menu-shared'
+import {
+  canShareMenuPdf,
+  downloadMenuPdf,
+  shareMenuPdf,
+} from '@/components/pymes/pyme-menu-pdf'
 
 type DashboardMetricCardProps = {
   icon: LucideIcon
@@ -216,6 +223,139 @@ export function MovementRecordCard({
   )
 }
 
+type MenuPdfActionsProps = {
+  menu: StockMenu
+  pymeName?: string | null
+  showShare?: boolean
+  compact?: boolean
+}
+
+function MenuPdfActions({
+  menu,
+  pymeName,
+  showShare = true,
+  compact = false,
+}: MenuPdfActionsProps) {
+  const [isDownloading, setIsDownloading] = useState(false)
+  const [isSharing, setIsSharing] = useState(false)
+  const [feedback, setFeedback] = useState<FeedbackState | null>(null)
+  const shareEnabled = canShareMenuPdf()
+
+  const handleDownload = async () => {
+    setIsDownloading(true)
+    setFeedback(null)
+
+    try {
+      const fileName = await downloadMenuPdf({ menu, pymeName })
+      setFeedback({
+        type: 'success',
+        message: `El PDF ${fileName} ya se descargo para compartirlo o reenviarlo.`,
+      })
+    } catch (error) {
+      setFeedback({
+        type: 'error',
+        message: error instanceof Error ? error.message : 'No se pudo generar el PDF del menu.',
+      })
+    } finally {
+      setIsDownloading(false)
+    }
+  }
+
+  const handleShare = async () => {
+    setIsSharing(true)
+    setFeedback(null)
+
+    try {
+      await shareMenuPdf({ menu, pymeName })
+      setFeedback({
+        type: 'success',
+        message: 'El PDF se compartio usando las opciones disponibles en tu dispositivo.',
+      })
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        setFeedback(null)
+        return
+      }
+
+      setFeedback({
+        type: 'error',
+        message:
+          error instanceof Error ? error.message : 'No se pudo compartir el PDF de este menu.',
+      })
+    } finally {
+      setIsSharing(false)
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => {
+            void handleDownload()
+          }}
+          disabled={isDownloading || isSharing}
+          className={cn(
+            'inline-flex items-center justify-center gap-2 rounded-full border border-border bg-card font-semibold text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-70',
+            compact ? 'px-3 py-2 text-xs' : 'px-4 py-2 text-sm',
+          )}
+        >
+          {isDownloading ? (
+            <LoaderCircle className="size-4 animate-spin" />
+          ) : (
+            <Download className="size-4" />
+          )}
+          {isDownloading ? 'Generando PDF...' : 'Descargar PDF'}
+        </button>
+
+        {showShare ? (
+          <button
+            type="button"
+            onClick={() => {
+              void handleShare()
+            }}
+            disabled={!shareEnabled || isDownloading || isSharing}
+            className={cn(
+              'inline-flex items-center justify-center gap-2 rounded-full border border-primary/20 bg-primary/10 font-semibold text-primary transition-colors hover:bg-primary/15 disabled:cursor-not-allowed disabled:opacity-60',
+              compact ? 'px-3 py-2 text-xs' : 'px-4 py-2 text-sm',
+            )}
+            title={
+              !shareEnabled
+                ? 'Esta opcion depende de que el navegador soporte Web Share para archivos.'
+                : undefined
+            }
+          >
+            {isSharing ? (
+              <LoaderCircle className="size-4 animate-spin" />
+            ) : (
+              <Share2 className="size-4" />
+            )}
+            {isSharing ? 'Compartiendo...' : 'Compartir PDF'}
+          </button>
+        ) : null}
+      </div>
+
+      {feedback ? (
+        <div
+          className={cn(
+            'rounded-2xl border px-4 py-3 text-sm',
+            feedback.type === 'success'
+              ? 'border-primary/20 bg-primary/10 text-foreground'
+              : 'border-destructive/20 bg-destructive/10 text-foreground',
+          )}
+        >
+          {feedback.message}
+        </div>
+      ) : showShare && !shareEnabled ? (
+        <p className="text-xs leading-5 text-muted-foreground">
+          Compartir depende de un navegador compatible con Web Share y una conexion segura https.
+        </p>
+      ) : null}
+    </div>
+  )
+}
+
 type MenuSummaryCardProps = {
   menu: StockMenu
   pymeName?: string | null
@@ -255,34 +395,38 @@ export function MenuSummaryCard({
             <h4 className="mt-3 text-xl font-semibold tracking-tight">{menu.name}</h4>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">{menu.description}</p>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => onOpenMenu(menu.id)}
-              className="inline-flex items-center justify-center gap-2 rounded-full border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-muted"
-            >
-              <Eye className="size-4" />
-              Ver y editar
-            </button>
-            <button
-              type="button"
-              onClick={() => onOpenRecords(menu.id)}
-              className="inline-flex items-center justify-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-4 py-2 text-sm font-semibold text-primary transition-colors hover:bg-primary/15"
-            >
-              <Clock3 className="size-4" />
-              Ver registros
-            </button>
-            <button
-              type="button"
-              onClick={() => setIsExpanded((currentState) => !currentState)}
-              className="inline-flex items-center justify-center gap-2 rounded-full border border-border bg-background px-4 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-muted"
-              aria-expanded={isExpanded}
-            >
-              {isExpanded ? 'Ocultar resumen' : 'Desplegar resumen'}
-              <ChevronDown
-                className={cn('size-4 transition-transform', isExpanded && 'rotate-180')}
-              />
-            </button>
+          <div className="flex flex-col gap-2 sm:items-end">
+            <div className="flex flex-wrap gap-2 sm:justify-end">
+              <button
+                type="button"
+                onClick={() => onOpenMenu(menu.id)}
+                className="inline-flex items-center justify-center gap-2 rounded-full border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-muted"
+              >
+                <Eye className="size-4" />
+                Ver y editar
+              </button>
+              <button
+                type="button"
+                onClick={() => onOpenRecords(menu.id)}
+                className="inline-flex items-center justify-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-4 py-2 text-sm font-semibold text-primary transition-colors hover:bg-primary/15"
+              >
+                <Clock3 className="size-4" />
+                Ver registros
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsExpanded((currentState) => !currentState)}
+                className="inline-flex items-center justify-center gap-2 rounded-full border border-border bg-background px-4 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-muted"
+                aria-expanded={isExpanded}
+              >
+                {isExpanded ? 'Ocultar resumen' : 'Desplegar resumen'}
+                <ChevronDown
+                  className={cn('size-4 transition-transform', isExpanded && 'rotate-180')}
+                />
+              </button>
+            </div>
+
+            <MenuPdfActions menu={menu} pymeName={pymeName} showShare={false} compact />
           </div>
         </div>
 
@@ -439,6 +583,10 @@ export function MenuDetailModal({
           <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">
             {menu.description}
           </p>
+
+          <div className="mt-4">
+            <MenuPdfActions menu={menu} pymeName={pymeName} />
+          </div>
         </div>
 
         <div className="mt-6 grid gap-4 sm:grid-cols-3">
