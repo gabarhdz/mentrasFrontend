@@ -110,6 +110,57 @@ const parseImages = (value: string | string[] | undefined): ForumImage[] => {
     }))
 }
 
+const readFileAsDataUrl = (file: File) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        resolve(reader.result)
+        return
+      }
+
+      reject(new Error('No se pudo leer una de las imagenes seleccionadas.'))
+    }
+
+    reader.onerror = () => reject(new Error('No se pudo leer una de las imagenes seleccionadas.'))
+    reader.readAsDataURL(file)
+  })
+
+const optimizeImageFile = async (file: File) => {
+  const sourceUrl = await readFileAsDataUrl(file)
+
+  return new Promise<string>((resolve, reject) => {
+    const image = new Image()
+
+    image.onload = () => {
+      const maxDimension = 1400
+      const widthRatio = maxDimension / image.width
+      const heightRatio = maxDimension / image.height
+      const ratio = Math.min(1, widthRatio, heightRatio)
+      const targetWidth = Math.max(1, Math.round(image.width * ratio))
+      const targetHeight = Math.max(1, Math.round(image.height * ratio))
+
+      const canvas = document.createElement('canvas')
+      canvas.width = targetWidth
+      canvas.height = targetHeight
+
+      const context = canvas.getContext('2d')
+
+      if (!context) {
+        reject(new Error('No se pudo preparar una de las imagenes seleccionadas.'))
+        return
+      }
+
+      context.drawImage(image, 0, 0, targetWidth, targetHeight)
+      resolve(canvas.toDataURL('image/jpeg', 0.82))
+    }
+
+    image.onerror = () => reject(new Error('No se pudo procesar una de las imagenes seleccionadas.'))
+    image.src = sourceUrl
+  })
+}
+
 const getUserRoleLabel = (user: ApiPostUser | null | undefined) => {
   if (!user) {
     return 'Miembro'
@@ -213,7 +264,41 @@ const fetchPosts = async () => {
   return toPostArray(await response.json()).map(normalizePost)
 }
 
+const createForum = async (payload: {
+  name: string
+  description: string
+  isPrivate: boolean
+  profilePicFile: File | null
+}) => {
+  const formData = new FormData()
+  formData.append('name', payload.name)
+  formData.append('description', payload.description)
+  formData.append('is_private', payload.isPrivate ? 'true' : 'false')
+
+  if (payload.profilePicFile) {
+    formData.append('profile_pic', payload.profilePicFile)
+  }
+
+  const response = await authFetch(buildBackendUrl('/api/forum/'), {
+    method: 'POST',
+    body: formData,
+  })
+
+  if (!response.ok) {
+    throw new Error(await getResponseErrorMessage(response, 'No se pudo crear el foro.'))
+  }
+
+  const data = (await response.json()) as ApiForumRecord
+  return normalizeForum(data, 0)
+}
+
 const createForumPost = async (forumId: string, payload: ForumComposerPayload) => {
+  let imageUrls: string[] = []
+
+  if (payload.imageFiles.length > 0) {
+    imageUrls = await Promise.all(payload.imageFiles.slice(0, 4).map((file) => optimizeImageFile(file)))
+  }
+
   const response = await authFetch(buildBackendUrl('/api/forum/post/'), {
     method: 'POST',
     headers: {
@@ -223,7 +308,7 @@ const createForumPost = async (forumId: string, payload: ForumComposerPayload) =
       forum_id: forumId,
       title: payload.title,
       text: payload.text,
-      images: JSON.stringify(payload.imageUrls),
+      images: JSON.stringify(imageUrls),
     }),
   })
 
@@ -255,7 +340,10 @@ export function BlogForumPrototype() {
   const [pageError, setPageError] = useState<string | null>(null)
   const [composerErrorMessage, setComposerErrorMessage] = useState<string | null>(null)
   const [composerSuccessMessage, setComposerSuccessMessage] = useState<string | null>(null)
+  const [createForumErrorMessage, setCreateForumErrorMessage] = useState<string | null>(null)
+  const [createForumSuccessMessage, setCreateForumSuccessMessage] = useState<string | null>(null)
   const [isSubmittingPost, setIsSubmittingPost] = useState(false)
+  const [isCreatingForum, setIsCreatingForum] = useState(false)
   const [isDeletingPostId, setIsDeletingPostId] = useState<string | null>(null)
 
   useEffect(() => {
@@ -328,6 +416,42 @@ export function BlogForumPrototype() {
     setSearchParams(nextSearchParams)
     setComposerErrorMessage(null)
     setComposerSuccessMessage(null)
+    setCreateForumErrorMessage(null)
+    setCreateForumSuccessMessage(null)
+  }
+
+  const handleCreateForum = async (payload: {
+    name: string
+    description: string
+    isPrivate: boolean
+    profilePicFile: File | null
+  }) => {
+    if (!hasStoredSession()) {
+      setCreateForumErrorMessage('Necesitas iniciar sesion para crear un foro.')
+      return
+    }
+
+    if (!payload.name.trim() || !payload.description.trim()) {
+      setCreateForumErrorMessage('Completa el nombre y la descripcion antes de crear el foro.')
+      return
+    }
+
+    try {
+      setIsCreatingForum(true)
+      setCreateForumErrorMessage(null)
+      setCreateForumSuccessMessage(null)
+      const createdForum = await createForum(payload)
+      setForums((current) => [createdForum, ...current])
+      const nextSearchParams = new URLSearchParams(searchParams)
+      nextSearchParams.set('forum', createdForum.id)
+      setSearchParams(nextSearchParams)
+      setCreateForumSuccessMessage(`El foro ${createdForum.name} ya esta disponible.`)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'No se pudo crear el foro.'
+      setCreateForumErrorMessage(message)
+    } finally {
+      setIsCreatingForum(false)
+    }
   }
 
   const handleSubmitPost = async (payload: ForumComposerPayload) => {
@@ -404,9 +528,14 @@ export function BlogForumPrototype() {
       <section className="grid gap-6 xl:grid-cols-[22rem_minmax(0,1fr)]">
         <ForumSidebar
           activeForumId={activeForum?.id ?? null}
+          canCreateForum={hasStoredSession()}
+          createForumErrorMessage={createForumErrorMessage}
+          createForumSuccessMessage={createForumSuccessMessage}
           forums={forums}
+          isCreatingForum={isCreatingForum}
           selectedForumPostCount={selectedForumPostCount}
           supportsScopedPosts={supportsScopedPosts}
+          onCreateForum={handleCreateForum}
           onSelectForum={handleSelectForum}
         />
 

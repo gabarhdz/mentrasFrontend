@@ -1,3 +1,6 @@
+import { useState } from 'react'
+import { ChevronDown, Flame, Sparkles } from 'lucide-react'
+
 import type { ForumComposerPayload, ForumPost, ForumRecord } from './blog-types'
 import { ForumComposerCard } from './forum-composer-card'
 import { ForumPostCard } from './forum-post-card'
@@ -35,20 +38,43 @@ export function ForumFeed({
   onSubmitPost,
   onDeletePost,
 }: ForumFeedProps) {
+  const [isComposerExpanded, setIsComposerExpanded] = useState(false)
+
   return (
     <div className="space-y-6">
       <section className="rounded-[1.75rem] border border-border/70 bg-card/92 p-5 shadow-sm backdrop-blur">
-        <p className="text-sm font-medium uppercase tracking-[0.22em] text-primary">Lectura actual</p>
-        <h2 className="mt-3 text-2xl font-semibold tracking-tight text-foreground">{feedTitle}</h2>
-        <p className="mt-2 text-sm leading-6 text-muted-foreground">{feedDescription}</p>
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-sm font-medium uppercase tracking-[0.22em] text-primary">Feed del foro</p>
+            <h2 className="mt-3 text-2xl font-semibold tracking-tight text-foreground">{feedTitle}</h2>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">{feedDescription}</p>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <span className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-background/80 px-4 py-2 text-sm text-muted-foreground">
+              <Flame className="size-4 text-primary" />
+              Recientes
+            </span>
+            <span className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-background/80 px-4 py-2 text-sm text-muted-foreground">
+              <Sparkles className="size-4 text-primary" />
+              Comunidad
+            </span>
+            <span className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-background/80 px-4 py-2 text-sm text-muted-foreground">
+              Orden cronologico
+              <ChevronDown className="size-4" />
+            </span>
+          </div>
+        </div>
       </section>
 
       <ForumComposerCard
         activeForum={activeForum}
-        disabled={!canPublish}
+        canPublish={canPublish}
         errorMessage={composerErrorMessage}
+        isExpanded={isComposerExpanded}
         successMessage={composerSuccessMessage}
         isSubmitting={isSubmittingPost}
+        onExpandChange={setIsComposerExpanded}
         onSubmit={onSubmitPost}
       />
 

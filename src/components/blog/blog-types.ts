@@ -34,5 +34,5 @@ export type ForumPost = {
 export type ForumComposerPayload = {
   title: string
   text: string
-  imageUrls: string[]
+  imageFiles: File[]
 }
