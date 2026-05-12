@@ -9,7 +9,7 @@ const Header = () => {
     { label: 'Herramientas', to: '/herramientas' },
     { label: 'Dashboard', to: '/dashboard' },
     {label: 'Blog', to: '/blog'},
-    {label: 'Configuración', to: '/settings  '}
+    /*{/*label: 'Configuración', to: '/settings  '}*/
   ]
 
   return (
