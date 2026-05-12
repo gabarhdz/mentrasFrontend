@@ -293,7 +293,7 @@ const formatFoundationDate = (value?: string) => {
 
 const getChangeLabel = (currentValue: number, previousValue: number) => {
   if (currentValue <= 0 && previousValue <= 0) {
-    return null
+    return undefined
   }
 
   if (previousValue <= 0) {
@@ -303,7 +303,7 @@ const getChangeLabel = (currentValue: number, previousValue: number) => {
   const delta = ((currentValue - previousValue) / previousValue) * 100
 
   if (!Number.isFinite(delta)) {
-    return null
+    return undefined
   }
 
   const roundedDelta = Math.round(delta)
@@ -475,7 +475,7 @@ export default function Herramientas() {
         : 'Cuando haya ventas, aqui veras con claridad que producto mueve mas tu negocio.',
       change: topSoldProduct
         ? `${formatNumber(toFiniteNumber(topSoldProduct.quantity_sold))} uds`
-        : null,
+        : undefined,
       tone: 'secondary' as const,
     },
     {
@@ -485,7 +485,9 @@ export default function Herramientas() {
       description: topSeenProduct
         ? `${topSeenProduct.product_name} es el producto que mas curiosidad genera con ${formatNumber(toFiniteNumber(topSeenProduct.views))} vistas.`
         : 'Todavia no hay suficientes visitas para detectar que producto llama mas la atencion.',
-      change: topSeenProduct ? `${formatNumber(toFiniteNumber(topSeenProduct.views))} vistas` : null,
+      change: topSeenProduct
+        ? `${formatNumber(toFiniteNumber(topSeenProduct.views))} vistas`
+        : undefined,
       tone: 'accent' as const,
     },
   ]
@@ -742,18 +744,18 @@ export default function Herramientas() {
             ) : null}
 
             <div className="mt-10 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-              {(isLoadingMetrics ? [0, 1, 2] : metricCards).map((metric, index) =>
-                isLoadingMetrics ? (
+              {isLoadingMetrics
+                ? [0, 1, 2].map((index) => (
                   <div
                     key={index}
                     className="h-48 animate-pulse rounded-[1.5rem] border border-border/70 bg-card/70"
                   />
-                ) : (
+                  ))
+                : metricCards.map((metric, index) => (
                   <Reveal key={metric.label} delay={0.06 * (index + 1)}>
                     <ToolsMetricCard {...metric} />
                   </Reveal>
-                ),
-              )}
+                  ))}
             </div>
 
             <div className="mt-16">
