@@ -15,8 +15,8 @@ export default function Dashboard() {
             Gestion de menus
           </h1>
           <p className="mt-3 max-w-2xl text-base text-foreground/75 md:text-lg">
-            Este espacio concentra la operacion de menus e inventario para que puedas crear,
-            revisar y ajustar el stock desde una sola vista.
+            Este espacio concentra la operacion de menus, inventario y registros para que puedas
+            crear, revisar y ajustar stock con detalle separado dentro del mismo dashboard.
           </p>
         </section>
         <PymeMenuManager />

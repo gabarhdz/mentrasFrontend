@@ -1,6 +1,7 @@
 import { type FormEvent, useEffect, useState } from 'react'
 import {
   CircleAlert,
+  Clock3,
   Eye,
   LoaderCircle,
   Package2,
@@ -10,6 +11,7 @@ import {
   ShieldCheck,
   Store,
   UtensilsCrossed,
+  X,
 } from 'lucide-react'
 
 import { Reveal } from '@/components/ui/reveal'
@@ -366,12 +368,35 @@ const PymeMenuManager = () => {
   })
   const [createMenuFeedback, setCreateMenuFeedback] = useState<FeedbackState | null>(null)
   const [isCreatingMenu, setIsCreatingMenu] = useState(false)
-  const [expandedMenuId, setExpandedMenuId] = useState<string | null>(null)
+  const [selectedMenuId, setSelectedMenuId] = useState<string | null>(null)
+  const [recordsMenuId, setRecordsMenuId] = useState<string>('all')
   const [menuEditors, setMenuEditors] = useState<Record<string, MenuEditorState>>({})
   const [menuFeedback, setMenuFeedback] = useState<Record<string, FeedbackState | null>>({})
   const [activeMenuMutationId, setActiveMenuMutationId] = useState<string | null>(null)
   const userId = getStoredUserId()
   const totalUnitsInStock = items.reduce((total, item) => total + (item.stock ?? 0), 0)
+  const selectedMenu = menus.find((menu) => menu.id === selectedMenuId) ?? null
+  const allMovements = menus
+    .flatMap((menu) =>
+      menu.movements.map((movement) => ({
+        ...movement,
+        menu: movement.menu ?? menu.id,
+        menu_name: movement.menu_name ?? menu.name,
+      })),
+    )
+    .sort((currentMovement, nextMovement) => {
+      const currentDate = currentMovement.created_at ? Date.parse(currentMovement.created_at) : 0
+      const nextDate = nextMovement.created_at ? Date.parse(nextMovement.created_at) : 0
+
+      return nextDate - currentDate
+    })
+  const filteredMovements =
+    recordsMenuId === 'all'
+      ? allMovements
+      : allMovements.filter((movement) => movement.menu === recordsMenuId)
+  const lastMovementLabel =
+    allMovements.length > 0 ? formatDateTime(allMovements[0]?.created_at) : 'Sin movimientos'
+  const menusWithMovements = menus.filter((menu) => menu.movements.length > 0).length
 
   useEffect(() => {
     if (!itemImageFile) {
@@ -494,6 +519,27 @@ const PymeMenuManager = () => {
 
     void loadStockData()
   }, [stockRefreshCount, user?.is_pyme_owner])
+
+  useEffect(() => {
+    if (!selectedMenuId) {
+      return
+    }
+
+    const originalOverflow = document.body.style.overflow
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setSelectedMenuId(null)
+      }
+    }
+
+    document.body.style.overflow = 'hidden'
+    window.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      document.body.style.overflow = originalOverflow
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [selectedMenuId])
 
   const handleRefresh = () => {
     setStockRefreshCount((currentValue) => currentValue + 1)
@@ -690,7 +736,7 @@ const PymeMenuManager = () => {
 
       if (createdMenu) {
         setMenus((currentMenus) => [createdMenu, ...currentMenus])
-        setExpandedMenuId(createdMenu.id)
+        setSelectedMenuId(createdMenu.id)
       }
 
       setCreateMenuForm({
@@ -848,6 +894,25 @@ const PymeMenuManager = () => {
     }
   }
 
+  const handleOpenMenuModal = (menuId: string) => {
+    setSelectedMenuId(menuId)
+  }
+
+  const handleCloseMenuModal = () => {
+    setSelectedMenuId(null)
+  }
+
+  const handleOpenRecordsForMenu = (menuId: string) => {
+    setRecordsMenuId(menuId)
+    setSelectedMenuId(null)
+    window.setTimeout(() => {
+      document.getElementById('dashboard-registros')?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      })
+    }, 50)
+  }
+
   if (isLoadingAccess) {
     return (
       <section className="mx-auto w-full max-w-5xl px-6 pb-16 md:px-8 md:pb-20">
@@ -920,8 +985,8 @@ const PymeMenuManager = () => {
         <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <SectionHeading
             badge="Menus e inventario"
-            title="Crea, consulta y ajusta tus menus desde esta misma vista"
-            description="Conectamos los endpoints reales de stock para que puedas crear inventario, armar menus y vigilar el stock restante sin salir de Pymes."
+            title="Opera menus con detalle separado y registros aparte"
+            description="Ahora el detalle de cada menu se abre en un pop-up para verlo o editarlo sin comprimir la tarjeta, y los registros viven en su propio bloque dentro del dashboard."
           />
           <button
             type="button"
@@ -936,7 +1001,7 @@ const PymeMenuManager = () => {
       </Reveal>
 
       <Reveal delay={0.04}>
-        <div className="mt-8 grid gap-4 md:grid-cols-3">
+        <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <div className="rounded-3xl border border-border/80 bg-card p-5 shadow-sm">
             <div className="inline-flex rounded-2xl bg-primary/10 p-3 text-primary">
               <Package2 className="size-5" />
@@ -958,6 +1023,13 @@ const PymeMenuManager = () => {
             <p className="mt-4 text-sm text-muted-foreground">Menus disponibles</p>
             <p className="mt-2 text-3xl font-semibold tracking-tight">{menus.length}</p>
           </div>
+          <div className="rounded-3xl border border-border/80 bg-card p-5 shadow-sm">
+            <div className="inline-flex rounded-2xl bg-primary/10 p-3 text-primary">
+              <Clock3 className="size-5" />
+            </div>
+            <p className="mt-4 text-sm text-muted-foreground">Ultimo registro</p>
+            <p className="mt-2 text-lg font-semibold tracking-tight">{lastMovementLabel}</p>
+          </div>
         </div>
       </Reveal>
 
@@ -973,8 +1045,8 @@ const PymeMenuManager = () => {
               </h3>
               <p className="mt-2 text-sm leading-6 text-muted-foreground">
                 La API actual ya deja crear menus, verlos y editar su contenido agregando items.
-                Todavia no expone un `PATCH` para renombrar menus o cambiar su descripcion desde
-                frontend, por eso aqui la edicion se centra en composicion, movimientos y stock.
+                Todavia no expone un `PATCH` para renombrar menus o cambiar su descripcion, por
+                eso el pop-up de edicion se centra en composicion, movimientos y stock.
               </p>
             </div>
           </div>
@@ -1171,11 +1243,11 @@ const PymeMenuManager = () => {
           <div className="rounded-[1.9rem] border border-border/80 bg-card p-6 shadow-sm">
             <p className="text-sm font-medium uppercase tracking-[0.22em] text-primary">Menus</p>
             <h3 className="mt-3 text-2xl font-semibold tracking-tight">
-              Crea menus y edita su contenido
+              Crea menus y abre su detalle aparte
             </h3>
             <p className="mt-3 text-sm leading-6 text-muted-foreground">
-              Desde aqui puedes ver cada menu, revisar sus movimientos recientes y anexar items
-              cuidando el stock disponible antes de confirmar.
+              Cada tarjeta queda como resumen. Cuando necesites revisar o editar un menu, lo abres
+              en un pop-up con su contenido completo y su historial inmediato.
             </p>
 
             {createMenuFeedback ? (
@@ -1243,14 +1315,12 @@ const PymeMenuManager = () => {
                 </div>
               ) : (
                 menus.map((menu) => {
-                  const currentEditor = menuEditors[menu.id] ?? emptyMenuEditor
-                  const selectedItem = items.find((item) => item.id === currentEditor.itemId) ?? null
-                  const isExpanded = expandedMenuId === menu.id
                   const itemCount = menu.menu_items.length
                   const totalAssignedUnits = menu.menu_items.reduce(
                     (total, menuItem) => total + (menuItem.quantity ?? 0),
                     0,
                   )
+                  const latestMovement = menu.movements[0]
 
                   return (
                     <article
@@ -1270,18 +1340,24 @@ const PymeMenuManager = () => {
                               {menu.description}
                             </p>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setExpandedMenuId((currentId) =>
-                                currentId === menu.id ? null : menu.id,
-                              )
-                            }
-                            className="inline-flex items-center justify-center gap-2 rounded-full border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-muted"
-                          >
-                            {isExpanded ? <PencilLine className="size-4" /> : <Eye className="size-4" />}
-                            {isExpanded ? 'Cerrar editor' : 'Ver y editar'}
-                          </button>
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenMenuModal(menu.id)}
+                              className="inline-flex items-center justify-center gap-2 rounded-full border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-muted"
+                            >
+                              <Eye className="size-4" />
+                              Ver y editar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleOpenRecordsForMenu(menu.id)}
+                              className="inline-flex items-center justify-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-4 py-2 text-sm font-semibold text-primary transition-colors hover:bg-primary/15"
+                            >
+                              <Clock3 className="size-4" />
+                              Ver registros
+                            </button>
+                          </div>
                         </div>
 
                         <div className="flex flex-wrap gap-2">
@@ -1296,210 +1372,80 @@ const PymeMenuManager = () => {
                           </span>
                         </div>
 
-                        {menu.menu_items.length > 0 ? (
-                          <div className="space-y-3">
-                            {menu.menu_items.map((menuItem) => {
+                        <div className="grid gap-3 md:grid-cols-2">
+                          {menu.menu_items.length > 0 ? (
+                            menu.menu_items.slice(0, 2).map((menuItem) => {
                               const item = menuItem.item
                               const stock = item?.stock ?? 0
-                              const imageUrl = resolveMediaUrl(item?.profile_pic)
 
                               return (
                                 <div
                                   key={menuItem.id}
                                   className="rounded-2xl border border-border/70 bg-card px-4 py-4"
                                 >
-                                  <div className="flex items-center gap-3">
-                                    {imageUrl ? (
-                                      <img
-                                        src={imageUrl}
-                                        alt={item?.name || 'Item del menu'}
-                                        className="h-12 w-12 rounded-xl object-cover ring-1 ring-border"
-                                      />
-                                    ) : (
-                                      <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                                        <Package2 className="size-4" />
-                                      </div>
-                                    )}
-                                    <div className="min-w-0 flex-1">
-                                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                                        <div>
-                                          <p className="text-sm font-semibold text-foreground">
-                                            {item?.name || 'Item sin nombre'}
-                                          </p>
-                                          <p className="mt-1 text-xs text-muted-foreground">
-                                            Precio actual: {formatPrice(item?.price)}
-                                          </p>
-                                        </div>
-                                        <div className="flex flex-wrap gap-2">
-                                          <span className="rounded-full bg-background px-3 py-1 text-xs font-medium text-foreground/80 ring-1 ring-border">
-                                            En menu: {menuItem.quantity ?? 0}
-                                          </span>
-                                          <span
-                                            className={`rounded-full border px-3 py-1 text-xs font-semibold ${getStockTone(stock)}`}
-                                          >
-                                            Stock restante: {stock}
-                                          </span>
-                                        </div>
-                                      </div>
-                                    </div>
+                                  <p className="text-sm font-semibold text-foreground">
+                                    {item?.name || 'Item sin nombre'}
+                                  </p>
+                                  <p className="mt-1 text-xs text-muted-foreground">
+                                    Precio actual: {formatPrice(item?.price)}
+                                  </p>
+                                  <div className="mt-3 flex flex-wrap gap-2">
+                                    <span className="rounded-full bg-background px-3 py-1 text-xs font-medium text-foreground/80 ring-1 ring-border">
+                                      En menu: {menuItem.quantity ?? 0}
+                                    </span>
+                                    <span
+                                      className={`rounded-full border px-3 py-1 text-xs font-semibold ${getStockTone(stock)}`}
+                                    >
+                                      Stock restante: {stock}
+                                    </span>
                                   </div>
                                 </div>
                               )
-                            })}
+                            })
+                          ) : (
+                            <div className="rounded-2xl border border-dashed border-border bg-card px-4 py-5 md:col-span-2">
+                              <p className="text-sm font-medium text-foreground">
+                                Este menu aun no tiene items
+                              </p>
+                              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                                Abre el pop-up para agregar productos del inventario y empezar a
+                                mover stock desde este menu.
+                              </p>
+                            </div>
+                          )}
+                          {menu.menu_items.length > 2 ? (
+                            <div className="rounded-2xl border border-dashed border-border bg-card px-4 py-4 md:col-span-2">
+                              <p className="text-sm text-muted-foreground">
+                                Hay {menu.menu_items.length - 2} items adicionales dentro de este
+                                menu. Abre el detalle para verlos todos.
+                              </p>
+                            </div>
+                          ) : null}
+                        </div>
+
+                        {latestMovement ? (
+                          <div className="rounded-2xl bg-card px-4 py-4 ring-1 ring-border">
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                              <div>
+                                <p className="text-sm font-semibold text-foreground">
+                                  Ultimo registro
+                                </p>
+                                <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                                  {latestMovement.details || 'Sin detalle adicional.'}
+                                </p>
+                              </div>
+                              <span className="rounded-full bg-background px-3 py-1 text-xs font-medium text-foreground/80 ring-1 ring-border">
+                                {formatDateTime(latestMovement.created_at)}
+                              </span>
+                            </div>
                           </div>
                         ) : (
-                          <div className="rounded-2xl border border-dashed border-border bg-card px-4 py-5">
-                            <p className="text-sm font-medium text-foreground">
-                              Este menu aun no tiene items
-                            </p>
-                            <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                              Abre el editor y agrega productos del inventario para empezar a mover
-                              stock desde este menu.
+                          <div className="rounded-2xl border border-dashed border-border bg-card px-4 py-4">
+                            <p className="text-sm text-muted-foreground">
+                              Aun no hay registros operativos en este menu.
                             </p>
                           </div>
                         )}
-
-                        {isExpanded ? (
-                          <div className="rounded-[1.6rem] border border-border bg-card p-4">
-                            <h5 className="text-sm font-semibold tracking-tight text-foreground">
-                              Editor de contenido del menu
-                            </h5>
-                            <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                              Cada alta descuenta stock en el backend y deja un movimiento
-                              registrado automaticamente.
-                            </p>
-
-                            {menuFeedback[menu.id] ? (
-                              <div
-                                className={`mt-4 rounded-2xl border px-4 py-3 text-sm ${
-                                  menuFeedback[menu.id]?.type === 'success'
-                                    ? 'border-primary/20 bg-primary/10 text-foreground'
-                                    : 'border-destructive/20 bg-destructive/10 text-foreground'
-                                }`}
-                              >
-                                {menuFeedback[menu.id]?.message}
-                              </div>
-                            ) : null}
-
-                            <form
-                              className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_180px_auto]"
-                              onSubmit={(event) => handleAttachItemSubmit(event, menu.id)}
-                            >
-                              <label className="block">
-                                <span className="text-sm font-medium text-foreground">
-                                  Item del inventario
-                                </span>
-                                <select
-                                  value={currentEditor.itemId}
-                                  onChange={(event) =>
-                                    handleMenuEditorChange(menu.id, 'itemId', event.target.value)
-                                  }
-                                  className="mt-2 w-full rounded-2xl border border-border bg-background px-4 py-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
-                                >
-                                  <option value="">Selecciona un item</option>
-                                  {items.map((item) => (
-                                    <option key={item.id} value={item.id}>
-                                      {item.name} · stock {item.stock ?? 0}
-                                    </option>
-                                  ))}
-                                </select>
-                              </label>
-
-                              <label className="block">
-                                <span className="text-sm font-medium text-foreground">
-                                  Cantidad
-                                </span>
-                                <input
-                                  type="number"
-                                  min="1"
-                                  step="1"
-                                  value={currentEditor.quantity}
-                                  onChange={(event) =>
-                                    handleMenuEditorChange(menu.id, 'quantity', event.target.value)
-                                  }
-                                  className="mt-2 w-full rounded-2xl border border-border bg-background px-4 py-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
-                                />
-                              </label>
-
-                              <div className="flex items-end">
-                                <button
-                                  type="submit"
-                                  disabled={activeMenuMutationId === menu.id || items.length === 0}
-                                  className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-70"
-                                >
-                                  {activeMenuMutationId === menu.id ? (
-                                    <LoaderCircle className="size-4 animate-spin" />
-                                  ) : (
-                                    <PlusCircle className="size-4" />
-                                  )}
-                                  {activeMenuMutationId === menu.id ? 'Guardando...' : 'Agregar'}
-                                </button>
-                              </div>
-                            </form>
-
-                            <div className="mt-4 rounded-2xl bg-background px-4 py-4 ring-1 ring-border">
-                              <p className="text-sm font-medium text-foreground">
-                                Stock visible antes de confirmar
-                              </p>
-                              <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                                {selectedItem
-                                  ? `${selectedItem.name} tiene ${selectedItem.stock ?? 0} unidades disponibles antes de este movimiento.`
-                                  : 'Selecciona un item para ver aqui el stock disponible antes de agregarlo al menu.'}
-                              </p>
-                            </div>
-
-                            <div className="mt-4">
-                              <p className="text-sm font-medium text-foreground">
-                                Movimientos recientes
-                              </p>
-                              {menu.movements.length === 0 ? (
-                                <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                                  Aun no hay movimientos registrados para este menu.
-                                </p>
-                              ) : (
-                                <div className="mt-3 space-y-3">
-                                  {menu.movements.slice(0, 3).map((movement) => (
-                                    <div
-                                      key={movement.id}
-                                      className="rounded-2xl border border-border/70 bg-background px-4 py-4"
-                                    >
-                                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                                        <div>
-                                          <p className="text-sm font-semibold text-foreground">
-                                            {movement.action_display || 'Movimiento'}
-                                          </p>
-                                          <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                                            {movement.details || 'Sin detalle adicional.'}
-                                          </p>
-                                        </div>
-                                        <span className="rounded-full bg-card px-3 py-1 text-xs font-medium text-foreground/80 ring-1 ring-border">
-                                          {formatDateTime(movement.created_at)}
-                                        </span>
-                                      </div>
-                                      <div className="mt-3 flex flex-wrap gap-2">
-                                        {movement.item_name ? (
-                                          <span className="rounded-full bg-card px-3 py-1 text-xs font-medium text-foreground/80 ring-1 ring-border">
-                                            Item: {movement.item_name}
-                                          </span>
-                                        ) : null}
-                                        {movement.quantity !== null && movement.quantity !== undefined ? (
-                                          <span className="rounded-full bg-card px-3 py-1 text-xs font-medium text-foreground/80 ring-1 ring-border">
-                                            Cantidad: {movement.quantity}
-                                          </span>
-                                        ) : null}
-                                        {movement.performed_by ? (
-                                          <span className="rounded-full bg-card px-3 py-1 text-xs font-medium text-foreground/80 ring-1 ring-border">
-                                            Hecho por: {movement.performed_by}
-                                          </span>
-                                        ) : null}
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        ) : null}
                       </div>
                     </article>
                   )
@@ -1509,6 +1455,414 @@ const PymeMenuManager = () => {
           </div>
         </Reveal>
       </div>
+
+      <section id="dashboard-registros" className="mt-10">
+        <Reveal delay={0.2}>
+          <SectionHeading
+            badge="Registros"
+            title="Historial operativo separado del editor"
+            description="Este bloque vive aparte para que puedas revisar movimientos, cantidades y responsables sin abrir menu por menu."
+          />
+        </Reveal>
+
+        <Reveal delay={0.24}>
+          <div className="mt-6 rounded-[1.9rem] border border-border/80 bg-card p-6 shadow-sm">
+            <div className="grid gap-4 lg:grid-cols-[0.85fr_1.15fr]">
+              <div className="space-y-4">
+                <div className="rounded-3xl border border-border/80 bg-background/70 p-5">
+                  <p className="text-sm text-muted-foreground">Registros totales</p>
+                  <p className="mt-2 text-3xl font-semibold tracking-tight">
+                    {allMovements.length}
+                  </p>
+                </div>
+                <div className="rounded-3xl border border-border/80 bg-background/70 p-5">
+                  <p className="text-sm text-muted-foreground">Menus con actividad</p>
+                  <p className="mt-2 text-3xl font-semibold tracking-tight">
+                    {menusWithMovements}
+                  </p>
+                </div>
+                <div className="rounded-3xl border border-border/80 bg-background/70 p-5">
+                  <label className="block">
+                    <span className="text-sm font-medium text-foreground">Filtrar por menu</span>
+                    <select
+                      value={recordsMenuId}
+                      onChange={(event) => setRecordsMenuId(event.target.value)}
+                      className="mt-3 w-full rounded-2xl border border-border bg-card px-4 py-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+                    >
+                      <option value="all">Todos los menus</option>
+                      {menus.map((menu) => (
+                        <option key={menu.id} value={menu.id}>
+                          {menu.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              </div>
+
+              <div>
+                {filteredMovements.length === 0 ? (
+                  <div className="rounded-3xl border border-dashed border-border bg-background/70 px-5 py-8">
+                    <p className="text-sm font-medium text-foreground">
+                      No hay registros para este filtro
+                    </p>
+                    <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                      Cuando agregues items a un menu, aqui quedaran visibles los movimientos con
+                      fecha, responsable y cantidad.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {filteredMovements.map((movement) => (
+                      <article
+                        key={movement.id}
+                        className="rounded-3xl border border-border/80 bg-background/70 p-4 shadow-sm"
+                      >
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                          <div>
+                            <div className="flex flex-wrap gap-2">
+                              <span className="rounded-full bg-card px-3 py-1 text-xs font-semibold text-primary ring-1 ring-primary/20">
+                                {movement.action_display || 'Movimiento'}
+                              </span>
+                              {movement.menu_name ? (
+                                <span className="rounded-full bg-card px-3 py-1 text-xs font-medium text-foreground/80 ring-1 ring-border">
+                                  {movement.menu_name}
+                                </span>
+                              ) : null}
+                            </div>
+                            <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                              {movement.details || 'Sin detalle adicional.'}
+                            </p>
+                          </div>
+                          <span className="rounded-full bg-card px-3 py-1 text-xs font-medium text-foreground/80 ring-1 ring-border">
+                            {formatDateTime(movement.created_at)}
+                          </span>
+                        </div>
+
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          {movement.item_name ? (
+                            <span className="rounded-full bg-card px-3 py-1 text-xs font-medium text-foreground/80 ring-1 ring-border">
+                              Item: {movement.item_name}
+                            </span>
+                          ) : null}
+                          {movement.quantity !== null && movement.quantity !== undefined ? (
+                            <span className="rounded-full bg-card px-3 py-1 text-xs font-medium text-foreground/80 ring-1 ring-border">
+                              Cantidad: {movement.quantity}
+                            </span>
+                          ) : null}
+                          {movement.performed_by ? (
+                            <span className="rounded-full bg-card px-3 py-1 text-xs font-medium text-foreground/80 ring-1 ring-border">
+                              Hecho por: {movement.performed_by}
+                            </span>
+                          ) : null}
+                          {movement.item?.stock !== null && movement.item?.stock !== undefined ? (
+                            <span
+                              className={`rounded-full border px-3 py-1 text-xs font-semibold ${getStockTone(movement.item.stock)}`}
+                            >
+                              Stock despues del movimiento: {movement.item.stock}
+                            </span>
+                          ) : null}
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </Reveal>
+      </section>
+
+      {selectedMenu ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 px-4 py-6 backdrop-blur-sm"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              handleCloseMenuModal()
+            }
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="menu-modal-title"
+            className="relative max-h-[88vh] w-full max-w-4xl overflow-y-auto rounded-[2rem] border border-border/80 bg-card p-6 shadow-2xl"
+          >
+            <button
+              type="button"
+              onClick={handleCloseMenuModal}
+              className="absolute right-4 top-4 inline-flex items-center justify-center rounded-full border border-border bg-background p-2 text-foreground transition-colors hover:bg-muted"
+              aria-label="Cerrar detalle del menu"
+            >
+              <X className="size-4" />
+            </button>
+
+            <div className="pr-12">
+              <p className="text-sm font-medium uppercase tracking-[0.22em] text-primary">
+                Detalle del menu
+              </p>
+              <h3 id="menu-modal-title" className="mt-3 text-3xl font-semibold tracking-tight">
+                {selectedMenu.name}
+              </h3>
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">
+                {selectedMenu.description}
+              </p>
+            </div>
+
+            <div className="mt-6 grid gap-4 sm:grid-cols-3">
+              <div className="rounded-3xl border border-border/80 bg-background/70 p-4">
+                <p className="text-sm text-muted-foreground">Items ligados</p>
+                <p className="mt-2 text-2xl font-semibold tracking-tight">
+                  {selectedMenu.menu_items.length}
+                </p>
+              </div>
+              <div className="rounded-3xl border border-border/80 bg-background/70 p-4">
+                <p className="text-sm text-muted-foreground">Movimientos del menu</p>
+                <p className="mt-2 text-2xl font-semibold tracking-tight">
+                  {selectedMenu.movements.length}
+                </p>
+              </div>
+              <div className="rounded-3xl border border-border/80 bg-background/70 p-4">
+                <p className="text-sm text-muted-foreground">Ultimo registro</p>
+                <p className="mt-2 text-sm font-semibold tracking-tight">
+                  {selectedMenu.movements[0]
+                    ? formatDateTime(selectedMenu.movements[0].created_at)
+                    : 'Sin movimientos'}
+                </p>
+              </div>
+            </div>
+
+            {menuFeedback[selectedMenu.id] ? (
+              <div
+                className={`mt-6 rounded-2xl border px-4 py-3 text-sm ${
+                  menuFeedback[selectedMenu.id]?.type === 'success'
+                    ? 'border-primary/20 bg-primary/10 text-foreground'
+                    : 'border-destructive/20 bg-destructive/10 text-foreground'
+                }`}
+              >
+                {menuFeedback[selectedMenu.id]?.message}
+              </div>
+            ) : null}
+
+            <div className="mt-6 grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
+              <div>
+                <h4 className="text-lg font-semibold tracking-tight">Items del menu</h4>
+                {selectedMenu.menu_items.length === 0 ? (
+                  <div className="mt-4 rounded-3xl border border-dashed border-border bg-background/70 px-4 py-6">
+                    <p className="text-sm font-medium text-foreground">
+                      Este menu aun no tiene items
+                    </p>
+                    <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                      Usa el editor del lado derecho para agregar productos del inventario.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="mt-4 space-y-3">
+                    {selectedMenu.menu_items.map((menuItem) => {
+                      const item = menuItem.item
+                      const stock = item?.stock ?? 0
+                      const imageUrl = resolveMediaUrl(item?.profile_pic)
+
+                      return (
+                        <article
+                          key={menuItem.id}
+                          className="rounded-3xl border border-border/80 bg-background/70 p-4 shadow-sm"
+                        >
+                          <div className="flex items-center gap-3">
+                            {imageUrl ? (
+                              <img
+                                src={imageUrl}
+                                alt={item?.name || 'Item del menu'}
+                                className="h-14 w-14 rounded-2xl object-cover ring-1 ring-border"
+                              />
+                            ) : (
+                              <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                                <Package2 className="size-4" />
+                              </div>
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                                <div>
+                                  <p className="text-sm font-semibold text-foreground">
+                                    {item?.name || 'Item sin nombre'}
+                                  </p>
+                                  <p className="mt-1 text-xs text-muted-foreground">
+                                    Precio actual: {formatPrice(item?.price)}
+                                  </p>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                  <span className="rounded-full bg-card px-3 py-1 text-xs font-medium text-foreground/80 ring-1 ring-border">
+                                    En menu: {menuItem.quantity ?? 0}
+                                  </span>
+                                  <span
+                                    className={`rounded-full border px-3 py-1 text-xs font-semibold ${getStockTone(stock)}`}
+                                  >
+                                    Stock restante: {stock}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </article>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <div className="rounded-[1.6rem] border border-border bg-background/70 p-4">
+                  <h4 className="text-lg font-semibold tracking-tight">Editor del menu</h4>
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                    Cada alta descuenta stock en el backend y deja el registro operativo guardado
+                    automaticamente.
+                  </p>
+
+                  <form
+                    className="mt-4 grid gap-3"
+                    onSubmit={(event) => handleAttachItemSubmit(event, selectedMenu.id)}
+                  >
+                    <label className="block">
+                      <span className="text-sm font-medium text-foreground">
+                        Item del inventario
+                      </span>
+                      <select
+                        value={(menuEditors[selectedMenu.id] ?? emptyMenuEditor).itemId}
+                        onChange={(event) =>
+                          handleMenuEditorChange(selectedMenu.id, 'itemId', event.target.value)
+                        }
+                        className="mt-2 w-full rounded-2xl border border-border bg-card px-4 py-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+                      >
+                        <option value="">Selecciona un item</option>
+                        {items.map((item) => (
+                          <option key={item.id} value={item.id}>
+                            {item.name} · stock {item.stock ?? 0}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="block">
+                      <span className="text-sm font-medium text-foreground">Cantidad</span>
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={(menuEditors[selectedMenu.id] ?? emptyMenuEditor).quantity}
+                        onChange={(event) =>
+                          handleMenuEditorChange(selectedMenu.id, 'quantity', event.target.value)
+                        }
+                        className="mt-2 w-full rounded-2xl border border-border bg-card px-4 py-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+                      />
+                    </label>
+
+                    <button
+                      type="submit"
+                      disabled={activeMenuMutationId === selectedMenu.id || items.length === 0}
+                      className="inline-flex items-center justify-center gap-2 rounded-2xl bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-70"
+                    >
+                      {activeMenuMutationId === selectedMenu.id ? (
+                        <LoaderCircle className="size-4 animate-spin" />
+                      ) : (
+                        <PlusCircle className="size-4" />
+                      )}
+                      {activeMenuMutationId === selectedMenu.id
+                        ? 'Guardando...'
+                        : 'Agregar al menu'}
+                    </button>
+                  </form>
+
+                  <div className="mt-4 rounded-2xl bg-card px-4 py-4 ring-1 ring-border">
+                    <p className="text-sm font-medium text-foreground">
+                      Stock visible antes de confirmar
+                    </p>
+                    <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                      {(() => {
+                        const editorState = menuEditors[selectedMenu.id] ?? emptyMenuEditor
+                        const selectedItem =
+                          items.find((item) => item.id === editorState.itemId) ?? null
+
+                        if (!selectedItem) {
+                          return 'Selecciona un item para ver aqui el stock disponible antes de agregarlo al menu.'
+                        }
+
+                        return `${selectedItem.name} tiene ${selectedItem.stock ?? 0} unidades disponibles antes de este movimiento.`
+                      })()}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-5 rounded-[1.6rem] border border-border bg-background/70 p-4">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <h4 className="text-lg font-semibold tracking-tight">
+                        Registros recientes del menu
+                      </h4>
+                      <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                        Aqui ves el historial inmediato sin salir del pop-up.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleOpenRecordsForMenu(selectedMenu.id)}
+                      className="inline-flex items-center justify-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-4 py-2 text-sm font-semibold text-primary transition-colors hover:bg-primary/15"
+                    >
+                      <Clock3 className="size-4" />
+                      Ir a registros
+                    </button>
+                  </div>
+
+                  {selectedMenu.movements.length === 0 ? (
+                    <p className="mt-4 text-sm leading-6 text-muted-foreground">
+                      Aun no hay movimientos registrados para este menu.
+                    </p>
+                  ) : (
+                    <div className="mt-4 space-y-3">
+                      {selectedMenu.movements.slice(0, 4).map((movement) => (
+                        <article
+                          key={movement.id}
+                          className="rounded-2xl border border-border/70 bg-card px-4 py-4"
+                        >
+                          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                            <div>
+                              <p className="text-sm font-semibold text-foreground">
+                                {movement.action_display || 'Movimiento'}
+                              </p>
+                              <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                                {movement.details || 'Sin detalle adicional.'}
+                              </p>
+                            </div>
+                            <span className="rounded-full bg-background px-3 py-1 text-xs font-medium text-foreground/80 ring-1 ring-border">
+                              {formatDateTime(movement.created_at)}
+                            </span>
+                          </div>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {movement.item_name ? (
+                              <span className="rounded-full bg-background px-3 py-1 text-xs font-medium text-foreground/80 ring-1 ring-border">
+                                Item: {movement.item_name}
+                              </span>
+                            ) : null}
+                            {movement.quantity !== null && movement.quantity !== undefined ? (
+                              <span className="rounded-full bg-background px-3 py-1 text-xs font-medium text-foreground/80 ring-1 ring-border">
+                                Cantidad: {movement.quantity}
+                              </span>
+                            ) : null}
+                            {movement.performed_by ? (
+                              <span className="rounded-full bg-background px-3 py-1 text-xs font-medium text-foreground/80 ring-1 ring-border">
+                                Hecho por: {movement.performed_by}
+                              </span>
+                            ) : null}
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   )
 }
