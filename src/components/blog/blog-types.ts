@@ -10,6 +10,8 @@ export type ForumRecord = {
   description: string
   profilePic: string
   isPrivate: boolean
+  isMember: boolean
+  isAdmin: boolean
   createdAt: string
 }
 

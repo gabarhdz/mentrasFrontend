@@ -15,7 +15,6 @@ type UserProfile = {
   is_mentor?: boolean
   username?: string
 }
-
 type CourseSummary = {
   id?: string
   name?: string
