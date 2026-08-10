@@ -393,7 +393,7 @@ export function ForumSidebar({
         </div>
       </section>
 
-      
+
     </aside>
   )
 }
