@@ -1,7 +1,7 @@
 import type { jsPDF as JsPdfDocument } from 'jspdf'
 
 import type { MenuItem, StockMenu } from '@/components/pymes/pyme-menu-shared'
-import { formatDateTime, formatPrice } from '@/components/pymes/pyme-menu-shared'
+import { formatDateTime, formatPrice, resolveMediaUrl } from '@/components/pymes/pyme-menu-shared'
 
 type MenuPdfPayload = {
   menu: StockMenu
@@ -15,6 +15,7 @@ const PAGE_HEIGHT = 297
 const MARGIN_X = 16
 const MARGIN_BOTTOM = 16
 const CONTENT_WIDTH = PAGE_WIDTH - MARGIN_X * 2
+const PDF_IMAGE_CACHE = new Map<string, { data: string; format: 'JPEG' | 'PNG' } | null>()
 
 const BRAND = {
   primary: [0, 137, 123] as RgbColor,
@@ -81,6 +82,34 @@ const setTextColor = (doc: JsPdfDocument, color: RgbColor) => {
 
 const splitText = (doc: JsPdfDocument, text: string, width: number) =>
   doc.splitTextToSize(text || '-', width) as string[]
+
+const loadImageForPdf = async (source?: string | null) => {
+  const imageUrl = resolveMediaUrl(source)
+  if (!imageUrl) return null
+  if (PDF_IMAGE_CACHE.has(imageUrl)) return PDF_IMAGE_CACHE.get(imageUrl) ?? null
+
+  try {
+    const response = await fetch(imageUrl)
+    if (!response.ok) throw new Error('Image request failed')
+    const blob = await response.blob()
+    if (!['image/png', 'image/jpeg', 'image/jpg'].includes(blob.type)) {
+      throw new Error('Unsupported image format')
+    }
+    const format: 'JPEG' | 'PNG' = blob.type === 'image/png' ? 'PNG' : 'JPEG'
+    const data = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => typeof reader.result === 'string' ? resolve(reader.result) : reject(new Error('Image conversion failed'))
+      reader.onerror = () => reject(reader.error ?? new Error('Image conversion failed'))
+      reader.readAsDataURL(blob)
+    })
+    const result = { data, format }
+    PDF_IMAGE_CACHE.set(imageUrl, result)
+    return result
+  } catch {
+    PDF_IMAGE_CACHE.set(imageUrl, null)
+    return null
+  }
+}
 
 const drawRoundedCard = (
   doc: JsPdfDocument,
@@ -310,10 +339,10 @@ const getItemCardHeight = (doc: JsPdfDocument, menuItem: MenuItem) => {
   const nameLines = splitText(
     doc,
     sanitizePdfText(menuItem.item?.name || 'Producto sin nombre'),
-    CONTENT_WIDTH - 52,
+    CONTENT_WIDTH - 78,
   )
 
-  return 26 + Math.max(0, nameLines.length - 1) * 5
+  return Math.max(38, 30 + nameLines.length * 5)
 }
 
 const drawAvailabilityPill = (
@@ -341,6 +370,7 @@ const drawMenuItemCard = (
     item: MenuItem
     index: number
     y: number
+    image: { data: string; format: 'JPEG' | 'PNG' } | null
   },
 ) => {
   const stock = options.item.item?.stock ?? 0
@@ -348,30 +378,39 @@ const drawMenuItemCard = (
   const productName = sanitizePdfText(options.item.item?.name || `Producto ${options.index + 1}`)
   const priceValue = getNumericPrice(options.item.item?.price)
   const priceLabel = priceValue === null ? 'Consultar precio' : formatPrice(priceValue)
-  const nameLines = splitText(doc, productName, CONTENT_WIDTH - 52)
+  const nameLines = splitText(doc, productName, CONTENT_WIDTH - 78)
   const cardHeight = getItemCardHeight(doc, options.item)
 
   drawRoundedCard(doc, MARGIN_X, options.y, CONTENT_WIDTH, cardHeight)
 
-  setFillColor(doc, BRAND.primary)
-  doc.roundedRect(MARGIN_X + 6, options.y + 6, 16, 16, 5, 5, 'F')
+  setFillColor(doc, BRAND.muted)
+  doc.roundedRect(MARGIN_X + 6, options.y + 6, 26, 26, 5, 5, 'F')
+
+  if (options.image) {
+    doc.addImage(options.image.data, options.image.format, MARGIN_X + 6, options.y + 6, 26, 26, undefined, 'FAST')
+  } else {
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(8)
+    setTextColor(doc, BRAND.mutedForeground)
+    doc.text('SIN FOTO', MARGIN_X + 19, options.y + 20, { align: 'center' })
+  }
 
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(10)
-  setTextColor(doc, BRAND.surface)
-  doc.text(String(options.index + 1).padStart(2, '0'), MARGIN_X + 14, options.y + 16, {
+  setTextColor(doc, BRAND.primary)
+  doc.text(String(options.index + 1).padStart(2, '0'), MARGIN_X + 39, options.y + 11, {
     align: 'center',
   })
 
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(12.5)
   setTextColor(doc, BRAND.foreground)
-  doc.text(nameLines, MARGIN_X + 28, options.y + 12)
+  doc.text(nameLines, MARGIN_X + 48, options.y + 12)
 
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(14)
   setTextColor(doc, BRAND.primary)
-  doc.text(sanitizePdfText(priceLabel), MARGIN_X + 28, options.y + 22 + (nameLines.length - 1) * 5)
+  doc.text(sanitizePdfText(priceLabel), MARGIN_X + 48, options.y + 22 + (nameLines.length - 1) * 5)
 
   drawAvailabilityPill(
     doc,
@@ -385,7 +424,7 @@ const drawMenuItemCard = (
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(8.5)
   setTextColor(doc, BRAND.mutedForeground)
-  doc.text('Precio de referencia', MARGIN_X + 28, options.y + 27 + (nameLines.length - 1) * 5)
+  doc.text('Precio de referencia', MARGIN_X + 48, options.y + 27 + (nameLines.length - 1) * 5)
 
   return options.y + cardHeight + 5
 }
@@ -528,15 +567,17 @@ const createMenuPdfDocument = async (payload: MenuPdfPayload) => {
 
     y += 36
   } else {
-    payload.menu.menu_items.forEach((menuItem, index) => {
+    for (const [index, menuItem] of payload.menu.menu_items.entries()) {
+      const image = await loadImageForPdf(menuItem.item?.profile_pic)
       const cardHeight = getItemCardHeight(doc, menuItem)
       ensureSpace(cardHeight + 5)
       y = drawMenuItemCard(doc, {
         item: menuItem,
         index,
         y,
+        image,
       })
-    })
+    }
   }
 
   ensureSpace(44)

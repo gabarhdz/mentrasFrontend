@@ -1,5 +1,5 @@
 import { type FormEvent, useEffect, useState } from 'react'
-import { Building2, ChevronDown, CircleAlert, LoaderCircle, PlusCircle } from 'lucide-react'
+import { Building2, ChevronDown, CircleAlert, LoaderCircle, Pencil, PlusCircle, X } from 'lucide-react'
 
 import { Reveal } from '@/components/ui/reveal'
 import { SectionHeading } from '@/components/ui/section-heading'
@@ -35,6 +35,34 @@ type CreatePymeForm = {
   description: string
   categoryId: string
   foundationDate: string
+}
+
+type EditPymeForm = {
+  name: string
+  foundationDate: string
+}
+
+const PAGE_SIZE = 3
+
+const PaginationControls = ({
+  page,
+  totalItems,
+  onPageChange,
+}: {
+  page: number
+  totalItems: number
+  onPageChange: (page: number) => void
+}) => {
+  const totalPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE))
+  if (totalPages <= 1) return null
+
+  return (
+    <div className="mt-6 flex items-center justify-between gap-3 rounded-2xl border border-border/70 bg-card/60 px-4 py-3">
+      <button type="button" disabled={page === 1} onClick={() => onPageChange(page - 1)} className="rounded-xl border border-border px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-40">Anterior</button>
+      <span className="text-sm text-muted-foreground">Página {page} de {totalPages}</span>
+      <button type="button" disabled={page === totalPages} onClick={() => onPageChange(page + 1)} className="rounded-xl border border-border px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-40">Siguiente</button>
+    </div>
+  )
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -182,32 +210,6 @@ const getPymeTags = (pyme: PymeRecord) =>
     pyme.access_date ? `Entro a Mentras:${formatDate(pyme.access_date)}` : null,
   ].filter((value): value is string => Boolean(value))
 
-const resolveComparableId = (value: unknown) => {
-  if (typeof value === 'string' || typeof value === 'number') {
-    return String(value)
-  }
-
-  if (!isRecord(value)) {
-    return null
-  }
-
-  const candidate = value.id ?? value.user_id ?? value.pk ?? value.employee_id
-
-  if (typeof candidate === 'string' || typeof candidate === 'number') {
-    return String(candidate)
-  }
-
-  return null
-}
-
-const isEmployeeOfPyme = (pyme: PymeRecord, userId: string) => {
-  if (!Array.isArray(pyme.employees)) {
-    return false
-  }
-
-  return pyme.employees.some((employee) => resolveComparableId(employee) === userId)
-}
-
 const getEmployeeCount = (pyme: PymeRecord) => (Array.isArray(pyme.employees) ? pyme.employees.length : 0)
 
 const getResponseErrorMessage = async (response: Response, fallbackMessage: string) => {
@@ -254,6 +256,8 @@ const PymeDashboard = () => {
   const [categories, setCategories] = useState<PymeCategory[]>([])
   const [totalPymes, setTotalPymes] = useState(0)
   const [totalEmployeePymes, setTotalEmployeePymes] = useState(0)
+  const [ownedPage, setOwnedPage] = useState(1)
+  const [employeePage, setEmployeePage] = useState(1)
   const [isLoading, setIsLoading] = useState(true)
   const [isLoadingEmployeePymes, setIsLoadingEmployeePymes] = useState(true)
   const [isLoadingCategories, setIsLoadingCategories] = useState(false)
@@ -275,6 +279,12 @@ const PymeDashboard = () => {
   })
   const [profilePicFile, setProfilePicFile] = useState<File | null>(null)
   const [profilePicPreview, setProfilePicPreview] = useState<string | null>(null)
+  const [editingPymeId, setEditingPymeId] = useState<string | null>(null)
+  const [editPymeForm, setEditPymeForm] = useState<EditPymeForm>({ name: '', foundationDate: '' })
+  const [editPymeFile, setEditPymeFile] = useState<File | null>(null)
+  const [editPymePreview, setEditPymePreview] = useState<string | null>(null)
+  const [isUpdatingPyme, setIsUpdatingPyme] = useState(false)
+  const [editPymeFeedback, setEditPymeFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
 
   useEffect(() => {
     const loadPymes = async () => {
@@ -300,8 +310,9 @@ const PymeDashboard = () => {
         const data = await response.json()
         const normalizedResponse = normalizePymesResponse(data)
 
-        setPymes(normalizedResponse.items.slice(0, 3))
+        setPymes(normalizedResponse.items)
         setTotalPymes(normalizedResponse.total)
+        setOwnedPage(1)
         setErrorMessage(null)
       } catch (error) {
         setErrorMessage(
@@ -338,7 +349,7 @@ const PymeDashboard = () => {
       }
 
       try {
-        const response = await authFetch(buildBackendUrl('/api/pyme/'))
+        const response = await authFetch(buildBackendUrl('/api/pyme/member/'))
 
         if (!response.ok) {
           if (response.status === 401) {
@@ -357,11 +368,12 @@ const PymeDashboard = () => {
         const data = await response.json()
         const normalizedResponse = normalizePymesResponse(data)
         const filteredEmployeePymes = normalizedResponse.items.filter((pyme) =>
-          isEmployeeOfPyme(pyme, userId),
+          String(pyme.owner ?? '') !== String(userId),
         )
 
         setEmployeePymes(filteredEmployeePymes)
         setTotalEmployeePymes(filteredEmployeePymes.length)
+        setEmployeePage(1)
         setEmployeePymesErrorMessage(null)
       } catch (error) {
         setEmployeePymesErrorMessage(
@@ -450,6 +462,12 @@ const PymeDashboard = () => {
       }
     }
   }, [profilePicPreview])
+
+  useEffect(() => {
+    return () => {
+      if (editPymePreview) URL.revokeObjectURL(editPymePreview)
+    }
+  }, [editPymePreview])
 
   const toggleCreateMenu = () => {
     setIsCreateMenuOpen((currentState) => !currentState)
@@ -558,8 +576,9 @@ const PymeDashboard = () => {
             foundation_date: foundationDate,
           } as PymeRecord)
 
-      setPymes((currentPymes) => [createdPyme, ...currentPymes].slice(0, 3))
+      setPymes((currentPymes) => [createdPyme, ...currentPymes])
       setTotalPymes((currentTotal) => currentTotal + 1)
+      setOwnedPage(1)
       setCreatePymeForm({
         name: '',
         description: '',
@@ -580,6 +599,73 @@ const PymeDashboard = () => {
       setIsCreatingPyme(false)
     }
   }
+
+  const openPymeEditor = (pyme: PymeRecord, fallbackName: string) => {
+    setEditingPymeId(pyme.id)
+    setEditPymeForm({
+      name: getTextValue(pyme, ['name', 'nombre', 'business_name', 'company_name', 'title']) || fallbackName,
+      foundationDate: typeof pyme.foundation_date === 'string' ? pyme.foundation_date.slice(0, 10) : '',
+    })
+    setEditPymeFile(null)
+    setEditPymePreview(null)
+    setEditPymeFeedback(null)
+  }
+
+  const handleEditPymeSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!editingPymeId) return
+
+    const name = editPymeForm.name.trim()
+    if (!name || !editPymeForm.foundationDate) {
+      setEditPymeFeedback({ type: 'error', message: 'Completa el nombre y la fecha de fundación.' })
+      return
+    }
+
+    setIsUpdatingPyme(true)
+    setEditPymeFeedback(null)
+    try {
+      const payload = new FormData()
+      payload.append('name', name)
+      payload.append('foundation_date', editPymeForm.foundationDate)
+      if (editPymeFile) payload.append('profile_pic', editPymeFile)
+
+      const response = await authFetch(buildBackendUrl(`/api/pyme/${editingPymeId}/`), {
+        method: 'PATCH',
+        body: payload,
+      })
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          clearAuthTokens()
+          throw new Error('Tu sesión venció. Inicia sesión de nuevo para editar la pyme.')
+        }
+        throw new Error(await getResponseErrorMessage(response, 'No se pudo actualizar la pyme.'))
+      }
+
+      const updated = await response.json()
+      setPymes((currentPymes) => currentPymes.map((pyme) =>
+        pyme.id === editingPymeId ? { ...pyme, ...(isRecord(updated) ? updated : {}), name } : pyme,
+      ))
+      setEditPymeFeedback({ type: 'success', message: 'Pyme actualizada correctamente.' })
+      window.setTimeout(() => setEditingPymeId(null), 700)
+    } catch (error) {
+      setEditPymeFeedback({ type: 'error', message: error instanceof Error ? error.message : 'No se pudo actualizar la pyme.' })
+    } finally {
+      setIsUpdatingPyme(false)
+    }
+  }
+
+  const handleEditPymeFileChange = (file: File | null) => {
+    setEditPymeFile(file)
+    if (!file) {
+      setEditPymePreview(null)
+      return
+    }
+    setEditPymePreview(URL.createObjectURL(file))
+  }
+
+  const paginatedPymes = pymes.slice((ownedPage - 1) * PAGE_SIZE, ownedPage * PAGE_SIZE)
+  const paginatedEmployeePymes = employeePymes.slice((employeePage - 1) * PAGE_SIZE, employeePage * PAGE_SIZE)
 
   const createMenu = (
     <div className="w-full rounded-[1.75rem] border border-border/80 bg-background/80 p-4 shadow-sm backdrop-blur">
@@ -804,7 +890,7 @@ const PymeDashboard = () => {
             <Reveal>
               <div className="mb-4 space-y-4">
                 <p className="text-sm text-muted-foreground">
-                  Mostrando las primeras {pymes.length} de {totalPymes} pymes registradas.
+                  Mostrando {Math.min((ownedPage - 1) * PAGE_SIZE + 1, pymes.length)}–{Math.min(ownedPage * PAGE_SIZE, pymes.length)} de {totalPymes} pymes registradas.
                 </p>
                 {createMenu}
               </div>
@@ -812,7 +898,7 @@ const PymeDashboard = () => {
 
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               
-              {pymes.map((pyme, index) => {
+              {paginatedPymes.map((pyme, index) => {
                 const name = getPymeName(pyme, index)
                 const description = getPymeDescription(pyme)
                 const tags = getPymeTags(pyme)
@@ -822,8 +908,13 @@ const PymeDashboard = () => {
                 return (
                   <Reveal key={String(pyme.id ?? name)} delay={0.06 * (index + 1)}>
                     <article className="h-full rounded-3xl border border-border/80 bg-card p-6 shadow-sm transition-transform duration-200 hover:-translate-y-1">
-                      <div className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold tracking-tight text-emerald-700">
-                        Eres dueño
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold tracking-tight text-emerald-700">
+                          Eres dueño
+                        </div>
+                        <button type="button" onClick={() => openPymeEditor(pyme, name)} className="inline-flex items-center gap-1 rounded-full border border-border px-3 py-1.5 text-xs font-semibold text-muted-foreground transition hover:border-primary/40 hover:bg-primary/10 hover:text-primary">
+                          <Pencil className="size-3.5" /> Editar
+                        </button>
                       </div>
 
                       {profilePicture ? (
@@ -873,6 +964,7 @@ const PymeDashboard = () => {
                 )
               })}
             </div>
+            <PaginationControls page={ownedPage} totalItems={pymes.length} onPageChange={setOwnedPage} />
           </>
         )}
       </div>
@@ -936,13 +1028,13 @@ const PymeDashboard = () => {
           <>
             <Reveal>
               <p className="mb-4 text-sm text-muted-foreground">
-                Mostrando {employeePymes.length} de {totalEmployeePymes}{' '}
+                Mostrando {Math.min((employeePage - 1) * PAGE_SIZE + 1, employeePymes.length)}–{Math.min(employeePage * PAGE_SIZE, employeePymes.length)} de {totalEmployeePymes}{' '}
                 {totalEmployeePymes === 1 ? 'pyme' : 'pymes'} de tu equipo.
               </p>
             </Reveal>
 
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {employeePymes.map((pyme, index) => {
+              {paginatedEmployeePymes.map((pyme, index) => {
                 const name = getPymeName(pyme, index)
                 const description = getPymeDescription(pyme)
                 const tags = getPymeTags(pyme)
@@ -999,10 +1091,39 @@ const PymeDashboard = () => {
                 )
               })}
             </div>
+            <PaginationControls page={employeePage} totalItems={employeePymes.length} onPageChange={setEmployeePage} />
           </>
         )}
       </div>
     </section>
+
+    {editingPymeId ? (
+      <div className="fixed inset-0 z-[10001] flex items-center justify-center bg-black/45 p-4" role="dialog" aria-modal="true" aria-labelledby="edit-pyme-title">
+        <div className="w-full max-w-lg rounded-3xl border border-border bg-background p-6 shadow-2xl">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">Configuración de pyme</p>
+              <h2 id="edit-pyme-title" className="mt-2 text-2xl font-semibold tracking-tight">Editar información</h2>
+              <p className="mt-1 text-sm text-muted-foreground">Actualiza los datos que verán tus colaboradores.</p>
+            </div>
+            <button type="button" onClick={() => setEditingPymeId(null)} className="rounded-full p-2 text-muted-foreground hover:bg-muted hover:text-foreground" aria-label="Cerrar"><X className="size-5" /></button>
+          </div>
+
+          {editPymeFeedback ? <div className={`mt-5 rounded-2xl border px-4 py-3 text-sm ${editPymeFeedback.type === 'error' ? 'border-destructive/25 bg-destructive/10' : 'border-primary/25 bg-primary/10'}`}>{editPymeFeedback.message}</div> : null}
+
+          <form className="mt-6 grid gap-4" onSubmit={handleEditPymeSubmit}>
+            <label className="text-sm font-medium">Nombre<input value={editPymeForm.name} onChange={(event) => setEditPymeForm((current) => ({ ...current, name: event.target.value }))} className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary" required /></label>
+            <label className="text-sm font-medium">Fecha de fundación<input type="date" value={editPymeForm.foundationDate} onChange={(event) => setEditPymeForm((current) => ({ ...current, foundationDate: event.target.value }))} className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary" required /></label>
+            <label className="text-sm font-medium">Foto de la pyme<input type="file" accept="image/*" onChange={(event) => handleEditPymeFileChange(event.target.files?.[0] ?? null)} className="mt-2 block w-full rounded-xl border border-border bg-background px-3 py-2 text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-primary/10 file:px-3 file:py-1.5 file:text-sm file:font-medium" /></label>
+            {editPymePreview ? <img src={editPymePreview} alt="Vista previa" className="h-40 w-full rounded-2xl object-cover ring-1 ring-border" /> : null}
+            <div className="mt-2 flex justify-end gap-2">
+              <button type="button" onClick={() => setEditingPymeId(null)} className="rounded-xl border border-border px-4 py-2.5 text-sm font-medium hover:bg-muted">Cancelar</button>
+              <button type="submit" disabled={isUpdatingPyme} className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60">{isUpdatingPyme ? <LoaderCircle className="size-4 animate-spin" /> : null} Guardar cambios</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    ) : null}
     </>
   )
 }

@@ -4,15 +4,27 @@ import { useTranslation } from 'react-i18next'
 import { languageOptions, type Language, usePreferences } from '@/lib/preferences'
 import { authFetch, getStoredUserId, hasStoredSession } from '@/lib/auth'
 import { buildBackendUrl } from '@/lib/utils'
+import { Bell } from 'lucide-react'
 
 type HeaderUserProfile = {
   is_admin?: boolean
   is_superuser?: boolean
 }
 
+type Notification = {
+  id: string
+  title: string
+  message: string
+  read: boolean
+  created_at: string
+}
+
 const Header = () => {
   const [menuOpen, setMenuOpen] = React.useState(false)
   const [user, setUser] = React.useState<HeaderUserProfile | null>(null)
+  const [notifications, setNotifications] = React.useState<Notification[]>([])
+  const [unreadCount, setUnreadCount] = React.useState(0)
+  const [notificationsOpen, setNotificationsOpen] = React.useState(false)
   const { language, setLanguage } = usePreferences()
   const { t } = useTranslation()
 
@@ -42,12 +54,51 @@ const Header = () => {
     }
   }, [])
 
+  React.useEffect(() => {
+    if (!hasStoredSession()) return
+
+    let isCurrent = true
+    const loadNotifications = async () => {
+      try {
+        const response = await authFetch(buildBackendUrl('/api/notifications/'))
+        if (!response.ok) return
+        const data = await response.json() as { results: Notification[]; unread_count: number }
+        if (isCurrent) {
+          setNotifications(data.results)
+          setUnreadCount(data.unread_count)
+        }
+      } catch {
+        // Notifications are auxiliary and must not interrupt navigation.
+      }
+    }
+
+    void loadNotifications()
+    const interval = window.setInterval(() => void loadNotifications(), 30000)
+    return () => {
+      isCurrent = false
+      window.clearInterval(interval)
+    }
+  }, [])
+
+  const markNotificationAsRead = async (notification: Notification) => {
+    if (notification.read) return
+    try {
+      const response = await authFetch(buildBackendUrl(`/api/notifications/${notification.id}/read/`), { method: 'PATCH' })
+      if (!response.ok) return
+      setNotifications((current) => current.map((item) => item.id === notification.id ? { ...item, read: true } : item))
+      setUnreadCount((current) => Math.max(0, current - 1))
+    } catch {
+      // Keep the notification unread when the request fails.
+    }
+  }
+
   const canManageMentorApplications = Boolean(user?.is_admin || user?.is_superuser)
   const navItems = [
     { label: t('nav.pymes'), to: '/pymes' },
     { label: t('nav.learning'), to: '/aprendizaje' },
     { label: t('nav.tools'), to: '/herramientas' },
     { label: t('nav.dashboard'), to: '/dashboard' },
+    { label: 'Asistente', to: '/chatbot' },
     { label: t('nav.blog'), to: '/blog' },
     ...(canManageMentorApplications ? [{ label: t('nav.admin'), to: '/admin/solicitudes-mentor' }] : []),
     { label: t('nav.settings'), to: '/settings' },
@@ -78,6 +129,33 @@ const Header = () => {
       </div>
 
       <div className="hidden items-center gap-3 md:flex">
+        <div className="relative">
+          <button
+            type="button"
+            aria-label="Notificaciones"
+            onClick={() => setNotificationsOpen((current) => !current)}
+            className="relative rounded-full border border-border bg-card p-2 text-muted-foreground transition hover:border-primary/40 hover:text-primary"
+          >
+            <Bell size={17} />
+            {unreadCount > 0 && <span className="absolute -right-1 -top-1 flex min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] text-primary-foreground">{unreadCount > 99 ? '99+' : unreadCount}</span>}
+          </button>
+          {notificationsOpen && (
+            <div className="absolute right-0 top-12 z-50 w-80 rounded-xl border border-border bg-card p-3 shadow-xl">
+              <div className="mb-2 flex items-center justify-between">
+                <p className="font-medium">Notificaciones</p>
+                {unreadCount > 0 && <button type="button" className="text-xs text-primary" onClick={async () => { await authFetch(buildBackendUrl('/api/notifications/read-all/'), { method: 'PATCH' }); setNotifications((current) => current.map((item) => ({ ...item, read: true }))); setUnreadCount(0) }}>Marcar todas</button>}
+              </div>
+              <div className="max-h-80 space-y-2 overflow-y-auto">
+                {notifications.length === 0 ? <p className="py-4 text-center text-sm text-muted-foreground">No tienes notificaciones.</p> : notifications.map((notification) => (
+                  <button key={notification.id} type="button" onClick={() => void markNotificationAsRead(notification)} className={`w-full rounded-lg p-2 text-left text-sm ${notification.read ? 'bg-muted/40' : 'bg-primary/10'}`}>
+                    <p className="font-medium">{notification.title}</p>
+                    <p className="text-muted-foreground">{notification.message}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
         <label className="sr-only" htmlFor="site-language">{t('nav.language')}</label>
         <select
           id="site-language"
