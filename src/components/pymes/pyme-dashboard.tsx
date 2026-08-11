@@ -3,6 +3,7 @@ import { Building2, ChevronDown, CircleAlert, LoaderCircle, PlusCircle } from 'l
 
 import { Reveal } from '@/components/ui/reveal'
 import { SectionHeading } from '@/components/ui/section-heading'
+import PymeEmployeesManager from '@/components/pymes/pyme-employees-manager'
 import { authFetch, clearAuthTokens, getStoredUserId, hasStoredSession } from '@/lib/auth'
 import { buildBackendUrl } from '@/lib/utils'
 
@@ -863,6 +864,10 @@ const PymeDashboard = () => {
                           </span>
                         )}
                       </div>
+
+                      {typeof pyme.id === 'string' ? (
+                        <PymeEmployeesManager pymeId={pyme.id} pymeName={name} />
+                      ) : null}
                     </article>
                   </Reveal>
                 )
