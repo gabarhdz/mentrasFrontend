@@ -292,8 +292,10 @@ const PymeMenuManager = () => {
   const [selectedMenuId, setSelectedMenuId] = useState<string | null>(null)
   const [recordsMenuId, setRecordsMenuId] = useState<string>('all')
   const [menuEditors, setMenuEditors] = useState<Record<string, MenuEditorState>>({})
+  const [menuItemQuantityEditors, setMenuItemQuantityEditors] = useState<Record<string, string>>({})
   const [menuFeedback, setMenuFeedback] = useState<Record<string, FeedbackState | null>>({})
   const [activeMenuMutationId, setActiveMenuMutationId] = useState<string | null>(null)
+  const [activeMenuItemMutationId, setActiveMenuItemMutationId] = useState<string | null>(null)
   const [openPanels, setOpenPanels] = useState<Record<PanelKey, boolean>>({
     inventory: false,
     menus: true,
@@ -423,7 +425,7 @@ const PymeMenuManager = () => {
     const loadStockData = async () => {
       try {
         const [itemsResponse, menusResponse, ownedPymesResponse] = await Promise.all([
-          authFetch(buildBackendUrl('/api/stock/items/')),
+          authFetch(buildBackendUrl('/api/stock/items/my/')),
           authFetch(buildBackendUrl('/api/stock/menus/')),
           authFetch(buildBackendUrl('/api/pyme/my/')),
         ])
@@ -699,6 +701,17 @@ const PymeMenuManager = () => {
         ...(currentEditors[menuId] ?? emptyMenuEditor),
         [field]: value,
       },
+    }))
+    setMenuFeedback((currentFeedback) => ({
+      ...currentFeedback,
+      [menuId]: null,
+    }))
+  }
+
+  const handleMenuItemQuantityChange = (menuId: string, menuItemId: string, value: string) => {
+    setMenuItemQuantityEditors((currentEditors) => ({
+      ...currentEditors,
+      [menuItemId]: value,
     }))
     setMenuFeedback((currentFeedback) => ({
       ...currentFeedback,
@@ -1041,6 +1054,165 @@ const PymeMenuManager = () => {
       }))
     } finally {
       setActiveMenuMutationId(null)
+    }
+  }
+
+  const handleMenuItemQuantitySubmit = async (
+    menuId: string,
+    menuItemId: string,
+    direction: 'send' | 'return',
+  ) => {
+    if (!user?.is_pyme_owner) {
+      setMenuFeedback((currentFeedback) => ({
+        ...currentFeedback,
+        [menuId]: {
+          type: 'error',
+          message: 'Solo las cuentas con rol de dueno de pyme pueden editar menus.',
+        },
+      }))
+      return
+    }
+
+    const menu = menus.find((currentMenu) => currentMenu.id === menuId) ?? null
+    const menuItem = menu?.menu_items.find((currentMenuItem) => currentMenuItem.id === menuItemId) ?? null
+    const quantityValue = menuItemQuantityEditors[menuItemId] ?? ''
+    const transferQuantity = Number(quantityValue)
+
+    if (!menu || !menuItem) {
+      setMenuFeedback((currentFeedback) => ({
+        ...currentFeedback,
+        [menuId]: {
+          type: 'error',
+          message: 'No pudimos encontrar ese item dentro del menu.',
+        },
+      }))
+      return
+    }
+
+    if (!Number.isInteger(transferQuantity) || transferQuantity <= 0) {
+      setMenuFeedback((currentFeedback) => ({
+        ...currentFeedback,
+        [menuId]: {
+          type: 'error',
+          message: 'Indica una cantidad entera mayor que cero para mover.',
+        },
+      }))
+      return
+    }
+
+    const previousQuantity = menuItem.quantity ?? 0
+    const stock = menuItem.item?.stock ?? 0
+    const nextQuantity =
+      direction === 'send'
+        ? previousQuantity + transferQuantity
+        : previousQuantity - transferQuantity
+    const extraUnitsNeeded = nextQuantity - previousQuantity
+
+    if (nextQuantity < 0) {
+      setMenuFeedback((currentFeedback) => ({
+        ...currentFeedback,
+        [menuId]: {
+          type: 'error',
+          message: `Solo hay ${previousQuantity} unidades de este item en el menu.`,
+        },
+      }))
+      return
+    }
+
+    if (extraUnitsNeeded > stock) {
+      setMenuFeedback((currentFeedback) => ({
+        ...currentFeedback,
+        [menuId]: {
+          type: 'error',
+          message: `Solo hay ${stock} unidades disponibles en inventario.`,
+        },
+      }))
+      return
+    }
+
+    setActiveMenuItemMutationId(menuItemId)
+    setMenuFeedback((currentFeedback) => ({
+      ...currentFeedback,
+      [menuId]: null,
+    }))
+
+    try {
+      const response = await authFetch(buildBackendUrl(`/api/stock/menus/${menuId}/items/${menuItemId}/`), {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          quantity: nextQuantity,
+        }),
+      })
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          clearAuthTokens()
+          setMenuFeedback((currentFeedback) => ({
+            ...currentFeedback,
+            [menuId]: {
+              type: 'error',
+              message: 'Tu sesion vencio. Inicia sesion de nuevo para editar el menu.',
+            },
+          }))
+          return
+        }
+
+        throw new Error(await getResponseErrorMessage(response, 'No se pudo ajustar la cantidad del item.'))
+      }
+
+      const data = await response.json()
+      const updatedMenu = normalizeStockMenu(data)
+
+      if (updatedMenu) {
+        setMenus((currentMenus) =>
+          currentMenus.map((currentMenu) => (currentMenu.id === updatedMenu.id ? updatedMenu : currentMenu)),
+        )
+
+        const stockByItemId = new Map<string, StockItem>()
+        updatedMenu.menu_items.forEach((updatedMenuItem) => {
+          if (updatedMenuItem.item?.id) {
+            stockByItemId.set(updatedMenuItem.item.id, updatedMenuItem.item)
+          }
+        })
+        updatedMenu.movements.forEach((movement) => {
+          if (movement.item?.id) {
+            stockByItemId.set(movement.item.id, movement.item)
+          }
+        })
+
+        setItems((currentItems) =>
+          currentItems.map((item) => stockByItemId.get(item.id) ?? item),
+        )
+      }
+
+      setMenuItemQuantityEditors((currentEditors) => {
+        const nextEditors = { ...currentEditors }
+        delete nextEditors[menuItemId]
+        return nextEditors
+      })
+      setMenuFeedback((currentFeedback) => ({
+        ...currentFeedback,
+        [menuId]: {
+          type: 'success',
+          message:
+            nextQuantity < previousQuantity
+              ? `${transferQuantity} unidades volvieron al inventario.`
+              : `${transferQuantity} unidades se enviaron al menu.`,
+        },
+      }))
+    } catch (error) {
+      setMenuFeedback((currentFeedback) => ({
+        ...currentFeedback,
+        [menuId]: {
+          type: 'error',
+          message: error instanceof Error ? error.message : 'No se pudo ajustar la cantidad del item.',
+        },
+      }))
+    } finally {
+      setActiveMenuItemMutationId(null)
     }
   }
 
@@ -1543,11 +1715,19 @@ const PymeMenuManager = () => {
           pymeName={selectedMenuPymeName}
           items={items}
           editorState={currentMenuEditor}
+          quantityEditors={menuItemQuantityEditors}
           feedback={currentMenuFeedback}
           isSaving={activeMenuMutationId === selectedMenu.id}
+          activeMenuItemMutationId={activeMenuItemMutationId}
           onClose={handleCloseMenuModal}
           onOpenRecords={() => handleOpenRecordsForMenu(selectedMenu.id)}
           onEditorChange={(field, value) => handleMenuEditorChange(selectedMenu.id, field, value)}
+          onMenuItemQuantityChange={(menuItemId, value) =>
+            handleMenuItemQuantityChange(selectedMenu.id, menuItemId, value)
+          }
+          onMenuItemQuantitySubmit={(menuItemId, direction) => {
+            void handleMenuItemQuantitySubmit(selectedMenu.id, menuItemId, direction)
+          }}
           onSubmit={(event) => handleAttachItemSubmit(event, selectedMenu.id)}
         />
       ) : null}

@@ -8,6 +8,7 @@ import {
   Package2,
   PencilLine,
   PlusCircle,
+  RefreshCcw,
   Share2,
   type LucideIcon,
   X,
@@ -642,11 +643,15 @@ type MenuDetailModalProps = {
   pymeName?: string | null
   items: StockItem[]
   editorState: MenuEditorState
+  quantityEditors: Record<string, string>
   feedback?: FeedbackState | null
   isSaving: boolean
+  activeMenuItemMutationId?: string | null
   onClose: () => void
   onOpenRecords: () => void
   onEditorChange: (field: keyof MenuEditorState, value: string) => void
+  onMenuItemQuantityChange: (menuItemId: string, value: string) => void
+  onMenuItemQuantitySubmit: (menuItemId: string, direction: 'send' | 'return') => void
   onSubmit: FormEventHandler<HTMLFormElement>
 }
 
@@ -655,11 +660,15 @@ export function MenuDetailModal({
   pymeName,
   items,
   editorState,
+  quantityEditors,
   feedback,
   isSaving,
+  activeMenuItemMutationId,
   onClose,
   onOpenRecords,
   onEditorChange,
+  onMenuItemQuantityChange,
+  onMenuItemQuantitySubmit,
   onSubmit,
 }: MenuDetailModalProps) {
   const selectedItem = items.find((item) => item.id === editorState.itemId) ?? null
@@ -755,6 +764,9 @@ export function MenuDetailModal({
                   const item = menuItem.item
                   const stock = item?.stock ?? 0
                   const imageUrl = resolveMediaUrl(item?.profile_pic)
+                  const transferValue = quantityEditors[menuItem.id] ?? ''
+                  const isUpdatingQuantity = activeMenuItemMutationId === menuItem.id
+                  const quantityInMenu = menuItem.quantity ?? 0
 
                   return (
                     <article
@@ -784,17 +796,62 @@ export function MenuDetailModal({
                               </p>
                             </div>
                             <div className="flex flex-wrap gap-2">
-                              <span className="rounded-full bg-card px-3 py-1 text-xs font-medium text-foreground/80 ring-1 ring-border">
-                                En menu: {menuItem.quantity ?? 0}
+                              <span className="rounded-2xl bg-card px-4 py-2 text-sm font-semibold text-foreground ring-1 ring-border">
+                                En menu: {quantityInMenu}
                               </span>
                               <span
-                                className={`rounded-full border px-3 py-1 text-xs font-semibold ${getStockTone(stock)}`}
+                                className={`rounded-2xl border px-4 py-2 text-sm font-semibold ${getStockTone(stock)}`}
                               >
-                                Stock restante: {stock}
+                                En inventario: {stock}
                               </span>
                             </div>
                           </div>
                         </div>
+                      </div>
+                      <div className="mt-4 rounded-2xl border border-border/70 bg-card/70 p-4">
+                        <label className="block max-w-xs">
+                          <span className="text-sm font-medium text-foreground">Cantidad a mover</span>
+                          <input
+                            type="number"
+                            min="1"
+                            step="1"
+                            value={transferValue}
+                            onChange={(event) => onMenuItemQuantityChange(menuItem.id, event.target.value)}
+                            className="mt-2 w-full rounded-2xl border border-border bg-card px-4 py-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+                            placeholder="Ej. 10"
+                          />
+                        </label>
+                        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                          <button
+                            type="button"
+                            disabled={isSaving || isUpdatingQuantity || stock <= 0}
+                            onClick={() => onMenuItemQuantitySubmit(menuItem.id, 'send')}
+                            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-70"
+                          >
+                            {isUpdatingQuantity ? (
+                              <LoaderCircle className="size-4 animate-spin" />
+                            ) : (
+                              <PlusCircle className="size-4" />
+                            )}
+                            Enviar al menu
+                          </button>
+                          <button
+                            type="button"
+                            disabled={isSaving || isUpdatingQuantity || quantityInMenu <= 0}
+                            onClick={() => onMenuItemQuantitySubmit(menuItem.id, 'return')}
+                            className="inline-flex items-center justify-center gap-2 rounded-2xl border border-border bg-background px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-70"
+                          >
+                            {isUpdatingQuantity ? (
+                              <LoaderCircle className="size-4 animate-spin" />
+                            ) : (
+                              <RefreshCcw className="size-4" />
+                            )}
+                            Devolver al inventario
+                          </button>
+                        </div>
+                        <p className="mt-3 text-xs leading-5 text-muted-foreground">
+                          Enviar descuenta del inventario. Devolver resta del menu y suma de nuevo al inventario.
+                        </p>
                       </div>
                     </article>
                   )
@@ -807,8 +864,8 @@ export function MenuDetailModal({
             <div className="rounded-[1.6rem] border border-border bg-background/70 p-4">
               <h4 className="text-lg font-semibold tracking-tight">Editor del menu</h4>
               <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                Cada alta descuenta stock en el backend y deja el registro operativo guardado
-                automaticamente.
+                Cada alta descuenta stock. Para devolver unidades al inventario, cambia la cantidad
+                de un item existente en la lista de la izquierda.
               </p>
 
               <form className="mt-4 grid gap-3" onSubmit={onSubmit}>
