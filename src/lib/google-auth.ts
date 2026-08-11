@@ -2,6 +2,7 @@ const normalizeEnvValue = (value: unknown) =>
   typeof value === 'string' ? value.trim() : ''
 
 const DEFAULT_GOOGLE_ALLOWED_ORIGINS = [
+  'https://mentras-frontend-gywe.vercel.app',
   'http://localhost:5173',
   'http://127.0.0.1:5173',
   'http://localhost:4200',
@@ -15,8 +16,9 @@ const configuredGoogleOrigins = normalizeEnvValue(import.meta.env.VITE_GOOGLE_AL
   .map((origin) => origin.trim())
   .filter(Boolean)
 
-export const googleAllowedOrigins =
-  configuredGoogleOrigins.length > 0 ? configuredGoogleOrigins : DEFAULT_GOOGLE_ALLOWED_ORIGINS
+export const googleAllowedOrigins = Array.from(
+  new Set([...DEFAULT_GOOGLE_ALLOWED_ORIGINS, ...configuredGoogleOrigins]),
+)
 
 export const isGoogleOriginAllowed = (origin: string) => googleAllowedOrigins.includes(origin)
 
