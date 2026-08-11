@@ -423,7 +423,7 @@ const PymeMenuManager = () => {
     const loadStockData = async () => {
       try {
         const [itemsResponse, menusResponse, ownedPymesResponse] = await Promise.all([
-          authFetch(buildBackendUrl('/api/stock/items/')),
+          authFetch(buildBackendUrl('/api/stock/items/my/')),
           authFetch(buildBackendUrl('/api/stock/menus/')),
           authFetch(buildBackendUrl('/api/pyme/my/')),
         ])
