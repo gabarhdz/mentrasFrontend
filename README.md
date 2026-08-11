@@ -146,6 +146,20 @@ bun run preview
 
 > Requires a Django backend running at `VITE_BACKEND_URL`. The frontend consumes REST endpoints under `/api/`.
 
+## Deploying to Vercel
+
+Import this repository into Vercel. Vercel detects Vite automatically; the included `vercel.json` keeps client-side routes such as `/dashboard`, `/chatbot` and `/pymes` working after a refresh.
+
+Configure these Production environment variables in Vercel:
+
+```env
+VITE_BACKEND_URL=https://your-backend-domain.example.com
+VITE_GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
+VITE_GOOGLE_ALLOWED_ORIGINS=https://your-project.vercel.app
+```
+
+`VITE_BACKEND_URL` must be the public HTTPS URL of the Django API, without a trailing slash. Do not use `localhost` or `127.0.0.1` in Vercel variables. Add the final Vercel domain (including any custom domain) to the backend `CORS_ALLOWED_ORIGINS`, `CSRF_TRUSTED_ORIGINS`, and `ALLOWED_HOSTS` environment variables. The backend must also be deployed separately; Vercel only serves this Vite frontend.
+
 ---
 
 ## Pages & Routes
