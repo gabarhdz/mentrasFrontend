@@ -39,6 +39,7 @@ import { authFetch, clearAuthTokens, getStoredUserId, hasStoredSession } from '@
 import { buildBackendUrl } from '@/lib/utils'
 
 type PanelKey = 'inventory' | 'menus' | 'records'
+type ItemEditorState = Pick<CreateItemForm, 'name' | 'stock'>
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null
@@ -276,6 +277,11 @@ const PymeMenuManager = () => {
   const [itemImagePreview, setItemImagePreview] = useState<string | null>(null)
   const [createItemFeedback, setCreateItemFeedback] = useState<FeedbackState | null>(null)
   const [isCreatingItem, setIsCreatingItem] = useState(false)
+  const [editingItemId, setEditingItemId] = useState<string | null>(null)
+  const [itemEditors, setItemEditors] = useState<Record<string, ItemEditorState>>({})
+  const [itemEditorImageFiles, setItemEditorImageFiles] = useState<Record<string, File | null>>({})
+  const [itemEditorFeedback, setItemEditorFeedback] = useState<Record<string, FeedbackState | null>>({})
+  const [activeItemMutationId, setActiveItemMutationId] = useState<string | null>(null)
   const [createMenuForm, setCreateMenuForm] = useState<CreateMenuForm>({
     pymeId: '',
     name: '',
@@ -508,6 +514,171 @@ const PymeMenuManager = () => {
       ...currentForm,
       [field]: value,
     }))
+  }
+
+  const handleStartItemEdit = (item: StockItem) => {
+    setEditingItemId(item.id)
+    setItemEditors((currentEditors) => ({
+      ...currentEditors,
+      [item.id]: {
+        name: item.name,
+        stock: String(item.stock ?? 0),
+      },
+    }))
+    setItemEditorImageFiles((currentFiles) => ({
+      ...currentFiles,
+      [item.id]: null,
+    }))
+    setItemEditorFeedback((currentFeedback) => ({
+      ...currentFeedback,
+      [item.id]: null,
+    }))
+    openPanel('inventory')
+  }
+
+  const handleCancelItemEdit = (itemId: string) => {
+    setEditingItemId((currentItemId) => (currentItemId === itemId ? null : currentItemId))
+    setItemEditorImageFiles((currentFiles) => ({
+      ...currentFiles,
+      [itemId]: null,
+    }))
+    setItemEditorFeedback((currentFeedback) => ({
+      ...currentFeedback,
+      [itemId]: null,
+    }))
+  }
+
+  const handleItemEditorChange = (
+    itemId: string,
+    field: keyof ItemEditorState,
+    value: string,
+  ) => {
+    setItemEditors((currentEditors) => ({
+      ...currentEditors,
+      [itemId]: {
+        ...(currentEditors[itemId] ?? { name: '', stock: '' }),
+        [field]: value,
+      },
+    }))
+    setItemEditorFeedback((currentFeedback) => ({
+      ...currentFeedback,
+      [itemId]: null,
+    }))
+  }
+
+  const handleItemEditorImageChange = (itemId: string, file: File | null) => {
+    setItemEditorImageFiles((currentFiles) => ({
+      ...currentFiles,
+      [itemId]: file,
+    }))
+    setItemEditorFeedback((currentFeedback) => ({
+      ...currentFeedback,
+      [itemId]: null,
+    }))
+  }
+
+  const handleItemEditSubmit = async (event: FormEvent<HTMLFormElement>, item: StockItem) => {
+    event.preventDefault()
+
+    if (!user?.is_pyme_owner) {
+      setItemEditorFeedback((currentFeedback) => ({
+        ...currentFeedback,
+        [item.id]: {
+          type: 'error',
+          message: 'Solo las cuentas con rol de dueno de pyme pueden editar items.',
+        },
+      }))
+      return
+    }
+
+    const editor = itemEditors[item.id] ?? { name: item.name, stock: String(item.stock ?? 0) }
+    const name = editor.name.trim()
+    const stockValue = editor.stock.trim()
+    const stock = Number(stockValue)
+
+    if (!name) {
+      setItemEditorFeedback((currentFeedback) => ({
+        ...currentFeedback,
+        [item.id]: {
+          type: 'error',
+          message: 'Escribe un nombre para el item.',
+        },
+      }))
+      return
+    }
+
+    if (!stockValue || !Number.isInteger(stock) || stock < 0) {
+      setItemEditorFeedback((currentFeedback) => ({
+        ...currentFeedback,
+        [item.id]: {
+          type: 'error',
+          message: 'El stock debe ser un numero entero igual o mayor que cero.',
+        },
+      }))
+      return
+    }
+
+    const imageFile = itemEditorImageFiles[item.id]
+    const payload = new FormData()
+    payload.append('name', name)
+    payload.append('stock', String(stock))
+
+    if (imageFile) {
+      payload.append('profile_pic', imageFile)
+    }
+
+    setActiveItemMutationId(item.id)
+    setItemEditorFeedback((currentFeedback) => ({
+      ...currentFeedback,
+      [item.id]: null,
+    }))
+
+    try {
+      const response = await authFetch(buildBackendUrl(`/api/stock/items/${item.id}/`), {
+        method: 'PATCH',
+        body: payload,
+      })
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          clearAuthTokens()
+          throw new Error('Tu sesion vencio. Inicia sesion de nuevo para editar el item.')
+        }
+
+        throw new Error(await getResponseErrorMessage(response, 'No se pudo actualizar el item.'))
+      }
+
+      const responsePayload = await response.json().catch(() => null)
+      const updatedItem = normalizeStockItem(responsePayload)
+
+      setItems((currentItems) =>
+        currentItems.map((currentItem) =>
+          currentItem.id === item.id ? updatedItem ?? { ...currentItem, name, stock } : currentItem,
+        ),
+      )
+      setEditingItemId(null)
+      setItemEditorImageFiles((currentFiles) => ({
+        ...currentFiles,
+        [item.id]: null,
+      }))
+      setItemEditorFeedback((currentFeedback) => ({
+        ...currentFeedback,
+        [item.id]: {
+          type: 'success',
+          message: 'El nombre, stock y foto del item se actualizaron correctamente.',
+        },
+      }))
+    } catch (error) {
+      setItemEditorFeedback((currentFeedback) => ({
+        ...currentFeedback,
+        [item.id]: {
+          type: 'error',
+          message: error instanceof Error ? error.message : 'No se pudo actualizar el item.',
+        },
+      }))
+    } finally {
+      setActiveItemMutationId(null)
+    }
   }
 
   const handleCreateMenuFieldChange = (field: keyof CreateMenuForm, value: string) => {
@@ -1164,7 +1335,24 @@ const PymeMenuManager = () => {
                   </p>
                 </div>
               ) : (
-                items.map((item) => <InventoryItemCard key={item.id} item={item} />)
+                items.map((item) => (
+                  <InventoryItemCard
+                    key={item.id}
+                    item={item}
+                    isEditingItem={editingItemId === item.id}
+                    isSavingItem={activeItemMutationId === item.id}
+                    nameValue={itemEditors[item.id]?.name ?? item.name}
+                    stockValue={itemEditors[item.id]?.stock ?? String(item.stock ?? 0)}
+                    imageFile={itemEditorImageFiles[item.id] ?? null}
+                    feedback={itemEditorFeedback[item.id] ?? null}
+                    onStartItemEdit={() => handleStartItemEdit(item)}
+                    onCancelItemEdit={() => handleCancelItemEdit(item.id)}
+                    onNameValueChange={(value) => handleItemEditorChange(item.id, 'name', value)}
+                    onStockValueChange={(value) => handleItemEditorChange(item.id, 'stock', value)}
+                    onImageFileChange={(file) => handleItemEditorImageChange(item.id, file)}
+                    onItemSubmit={(event) => void handleItemEditSubmit(event, item)}
+                  />
+                ))
               )}
             </div>
           </DashboardDisclosureSection>

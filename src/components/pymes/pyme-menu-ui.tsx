@@ -6,6 +6,7 @@ import {
   Eye,
   LoaderCircle,
   Package2,
+  PencilLine,
   PlusCircle,
   Share2,
   type LucideIcon,
@@ -114,9 +115,35 @@ export function DashboardDisclosureSection({
 
 type InventoryItemCardProps = {
   item: StockItem
+  isEditingItem: boolean
+  isSavingItem: boolean
+  nameValue: string
+  stockValue: string
+  imageFile: File | null
+  feedback: FeedbackState | null
+  onStartItemEdit: () => void
+  onCancelItemEdit: () => void
+  onNameValueChange: (value: string) => void
+  onStockValueChange: (value: string) => void
+  onImageFileChange: (file: File | null) => void
+  onItemSubmit: FormEventHandler<HTMLFormElement>
 }
 
-export function InventoryItemCard({ item }: InventoryItemCardProps) {
+export function InventoryItemCard({
+  item,
+  isEditingItem,
+  isSavingItem,
+  nameValue,
+  stockValue,
+  imageFile,
+  feedback,
+  onStartItemEdit,
+  onCancelItemEdit,
+  onNameValueChange,
+  onStockValueChange,
+  onImageFileChange,
+  onItemSubmit,
+}: InventoryItemCardProps) {
   const imageUrl = resolveMediaUrl(item.profile_pic)
   const stock = item.stock ?? 0
 
@@ -147,6 +174,99 @@ export function InventoryItemCard({ item }: InventoryItemCardProps) {
             </span>
           </div>
         </div>
+      </div>
+
+      <div className="mt-4 border-t border-border/70 pt-4">
+        {isEditingItem ? (
+          <form className="grid gap-3" onSubmit={onItemSubmit}>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="min-w-0">
+                <span className="text-sm font-medium text-foreground">Nombre del item</span>
+                <input
+                  type="text"
+                  value={nameValue}
+                  onChange={(event) => onNameValueChange(event.target.value)}
+                  disabled={isSavingItem}
+                  className="mt-2 w-full rounded-2xl border border-border bg-card px-4 py-2.5 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
+                />
+              </label>
+              <label className="min-w-0">
+                <span className="text-sm font-medium text-foreground">Stock disponible</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  inputMode="numeric"
+                  value={stockValue}
+                  onChange={(event) => onStockValueChange(event.target.value)}
+                  disabled={isSavingItem}
+                  className="mt-2 w-full rounded-2xl border border-border bg-card px-4 py-2.5 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
+                />
+              </label>
+            </div>
+
+            <label className="block">
+              <span className="text-sm font-medium text-foreground">Foto del item</span>
+              <input
+                type="file"
+                accept="image/*"
+                disabled={isSavingItem}
+                onChange={(event) => onImageFileChange(event.target.files?.[0] ?? null)}
+                className="mt-2 w-full rounded-2xl border border-border bg-card px-4 py-2.5 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
+              />
+              <p className="mt-2 text-xs text-muted-foreground">
+                Deja este campo vacio para conservar la foto actual.
+              </p>
+            </label>
+
+            {imageFile ? (
+              <p className="text-xs text-muted-foreground">
+                Nueva foto seleccionada: {imageFile.name}
+              </p>
+            ) : null}
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={onCancelItemEdit}
+                disabled={isSavingItem}
+                className="rounded-full border border-border bg-card px-4 py-2.5 text-sm font-semibold text-foreground transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={isSavingItem}
+                className="inline-flex items-center justify-center gap-2 rounded-full bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isSavingItem ? <LoaderCircle className="size-4 animate-spin" /> : null}
+                {isSavingItem ? 'Guardando...' : 'Guardar cambios'}
+              </button>
+            </div>
+          </form>
+        ) : (
+          <button
+            type="button"
+            onClick={onStartItemEdit}
+            className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-4 py-2.5 text-sm font-semibold text-foreground transition hover:border-primary/35 hover:bg-primary/5"
+          >
+            <PencilLine className="size-4" />
+            Editar item
+          </button>
+        )}
+
+        {feedback ? (
+          <p
+            className={`mt-3 rounded-2xl border px-3 py-2 text-sm ${
+              feedback.type === 'success'
+                ? 'border-primary/20 bg-primary/10 text-foreground'
+                : 'border-destructive/20 bg-destructive/10 text-foreground'
+            }`}
+            role={feedback.type === 'error' ? 'alert' : 'status'}
+          >
+            {feedback.message}
+          </p>
+        ) : null}
       </div>
     </article>
   )
