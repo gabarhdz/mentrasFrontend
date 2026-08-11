@@ -7,15 +7,18 @@ import {
   FileText,
   FolderTree,
   LoaderCircle,
+  PencilLine,
   PlayCircle,
   Sparkles,
   Trash2,
   Upload,
+  UserRoundPlus,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
 import Footer from '@/components/ui/Footer'
 import Header from '@/components/ui/Header'
+import { MentorApplicationsAdminPanel } from '@/components/learning/mentor-applications-admin'
 import { authFetch, clearAuthTokens, getStoredUserId, hasStoredSession } from '@/lib/auth'
 import { buildBackendUrl } from '@/lib/utils'
 
@@ -37,6 +40,12 @@ type CourseFormState = {
   description: string
 }
 
+type MentorApplicationFormState = {
+  expertise: string
+  experience: string
+  motivation: string
+}
+
 type UnitFormState = {
   title: string
   description: string
@@ -50,6 +59,7 @@ type LessonFormState = {
 type UserProfile = {
   id?: string
   username?: string
+  is_admin?: boolean
   is_mentor?: boolean
 }
 
@@ -73,6 +83,7 @@ type CourseSummary = {
   description?: string
   author?: string
   author_username?: string
+  is_owner?: boolean
   units?: UnitSummary[]
 }
 
@@ -223,6 +234,39 @@ const createCourseRequest = async (payload: CourseFormState) => {
   return (await response.json()) as CourseSummary
 }
 
+const updateCourseRequest = async (courseId: string, payload: CourseFormState) => {
+  const response = await authFetch(buildBackendUrl(`/api/learning/courses/${courseId}/`), {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  })
+
+  await ensureSuccessfulResponse(response, 'No se pudo actualizar el curso.')
+  return (await response.json()) as CourseSummary
+}
+
+const deleteCourseRequest = async (courseId: string) => {
+  const response = await authFetch(buildBackendUrl(`/api/learning/courses/${courseId}/`), {
+    method: 'DELETE',
+  })
+
+  await ensureSuccessfulResponse(response, 'No se pudo eliminar el curso.')
+}
+
+const submitMentorApplicationRequest = async (payload: MentorApplicationFormState) => {
+  const response = await authFetch(buildBackendUrl('/api/learning/mentor/apply/'), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  })
+
+  await ensureSuccessfulResponse(response, 'No se pudo enviar la solicitud para ser mentor.')
+}
+
 const createUnitRequest = async (courseId: string, payload: UnitFormState) => {
   const response = await authFetch(buildBackendUrl(`/api/learning/courses/${courseId}/units/`), {
     method: 'POST',
@@ -355,6 +399,15 @@ export default function Aprendizaje() {
     name: '',
     description: '',
   })
+  const [courseEditForm, setCourseEditForm] = useState<CourseFormState>({
+    name: '',
+    description: '',
+  })
+  const [mentorApplicationForm, setMentorApplicationForm] = useState<MentorApplicationFormState>({
+    expertise: '',
+    experience: '',
+    motivation: '',
+  })
   const [unitForm, setUnitForm] = useState<UnitFormState>({
     title: '',
     description: '',
@@ -368,11 +421,16 @@ export default function Aprendizaje() {
   const [isLoadingUser, setIsLoadingUser] = useState(true)
   const [isLoadingCourses, setIsLoadingCourses] = useState(false)
   const [isCreatingCourse, setIsCreatingCourse] = useState(false)
+  const [isSavingCourse, setIsSavingCourse] = useState(false)
+  const [isDeletingCourseId, setIsDeletingCourseId] = useState('')
+  const [isSubmittingMentorApplication, setIsSubmittingMentorApplication] = useState(false)
   const [isCreatingUnit, setIsCreatingUnit] = useState(false)
   const [isSubmittingLesson, setIsSubmittingLesson] = useState(false)
   const [pageError, setPageError] = useState<string | null>(null)
   const [coursesError, setCoursesError] = useState<string | null>(null)
   const [courseFeedback, setCourseFeedback] = useState<FeedbackState | null>(null)
+  const [courseManagementFeedback, setCourseManagementFeedback] = useState<FeedbackState | null>(null)
+  const [mentorApplicationFeedback, setMentorApplicationFeedback] = useState<FeedbackState | null>(null)
   const [unitFeedback, setUnitFeedback] = useState<FeedbackState | null>(null)
   const [lessonFeedback, setLessonFeedback] = useState<FeedbackState | null>(null)
   const [structureFeedback, setStructureFeedback] = useState<FeedbackState | null>(null)
@@ -383,8 +441,12 @@ export default function Aprendizaje() {
   const [createdLesson, setCreatedLesson] = useState<LessonDetail | null>(null)
   const [isDeletingUnitId, setIsDeletingUnitId] = useState('')
   const [isDeletingLessonId, setIsDeletingLessonId] = useState('')
+  const [editingCourseId, setEditingCourseId] = useState('')
+  const [coursePendingDeletionId, setCoursePendingDeletionId] = useState('')
 
-  const ownedCourses = courses.filter((course) => course.author && user?.id && course.author === user.id)
+  const isOwnedCourse = (course: CourseSummary) =>
+    Boolean(course.is_owner || (course.author && user?.id && course.author === user.id))
+  const ownedCourses = courses.filter(isOwnedCourse)
   const selectedCourse =
     ownedCourses.find((course) => course.id === selectedCourseId) ?? null
   const selectedUnits = selectedCourse?.units ?? []
@@ -437,7 +499,7 @@ export default function Aprendizaje() {
   ) => {
     const preferredCourseId = options?.preferredCourseId
     const preferredUnitId = options?.preferredUnitId
-    const nextOwnedCourses = nextCourses.filter((course) => course.author && user?.id && course.author === user.id)
+    const nextOwnedCourses = nextCourses.filter(isOwnedCourse)
     const matchingCourse =
       nextOwnedCourses.find((course) => course.id === preferredCourseId) ??
       nextOwnedCourses.find((course) => course.id === selectedCourseId) ??
@@ -499,6 +561,25 @@ export default function Aprendizaje() {
       ...currentForm,
       [field]: value,
     }))
+  }
+
+  const handleCourseEditFormChange = (field: keyof CourseFormState, value: string) => {
+    setCourseEditForm((currentForm) => ({
+      ...currentForm,
+      [field]: value,
+    }))
+    setCourseManagementFeedback(null)
+  }
+
+  const handleMentorApplicationFormChange = (
+    field: keyof MentorApplicationFormState,
+    value: string,
+  ) => {
+    setMentorApplicationForm((currentForm) => ({
+      ...currentForm,
+      [field]: value,
+    }))
+    setMentorApplicationFeedback(null)
   }
 
   const handleUnitFormChange = (field: keyof UnitFormState, value: string) => {
@@ -607,6 +688,127 @@ export default function Aprendizaje() {
       })
     } finally {
       setIsCreatingCourse(false)
+    }
+  }
+
+  const handleStartCourseEdit = (course: CourseSummary) => {
+    if (!course.id) {
+      return
+    }
+
+    setEditingCourseId(course.id)
+    setCoursePendingDeletionId('')
+    setCourseEditForm({
+      name: course.name ?? '',
+      description: course.description ?? '',
+    })
+    setCourseManagementFeedback(null)
+  }
+
+  const handleCancelCourseEdit = () => {
+    setEditingCourseId('')
+    setCourseManagementFeedback(null)
+  }
+
+  const handleUpdateCourse = async (event: FormEvent<HTMLFormElement>, course: CourseSummary) => {
+    event.preventDefault()
+
+    if (!course.id) {
+      return
+    }
+
+    const name = courseEditForm.name.trim()
+    const description = courseEditForm.description.trim()
+
+    if (!name || !description) {
+      setCourseManagementFeedback({
+        type: 'error',
+        message: 'Completa el nombre y la descripcion antes de guardar los cambios.',
+      })
+      return
+    }
+
+    setIsSavingCourse(true)
+    setCourseManagementFeedback(null)
+
+    try {
+      const updatedCourse = await updateCourseRequest(course.id, { name, description })
+      await loadCourses({ preferredCourseId: updatedCourse.id ?? course.id })
+      setEditingCourseId('')
+      setCourseManagementFeedback({
+        type: 'success',
+        message: 'Curso actualizado. El nuevo nombre y descripcion ya se muestran en tu espacio.',
+      })
+    } catch (error) {
+      setCourseManagementFeedback({
+        type: 'error',
+        message: error instanceof Error ? error.message : 'No se pudo actualizar el curso.',
+      })
+    } finally {
+      setIsSavingCourse(false)
+    }
+  }
+
+  const handleDeleteCourse = async (course: CourseSummary) => {
+    if (!course.id) {
+      return
+    }
+
+    setIsDeletingCourseId(course.id)
+    setCourseManagementFeedback(null)
+
+    try {
+      await deleteCourseRequest(course.id)
+      await loadCourses()
+      setCoursePendingDeletionId('')
+      setEditingCourseId('')
+      setCourseManagementFeedback({
+        type: 'success',
+        message: 'Curso eliminado. Sus unidades y lecciones asociadas ya no estan disponibles.',
+      })
+    } catch (error) {
+      setCourseManagementFeedback({
+        type: 'error',
+        message: error instanceof Error ? error.message : 'No se pudo eliminar el curso.',
+      })
+    } finally {
+      setIsDeletingCourseId('')
+    }
+  }
+
+  const handleSubmitMentorApplication = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+
+    const expertise = mentorApplicationForm.expertise.trim()
+    const experience = mentorApplicationForm.experience.trim()
+    const motivation = mentorApplicationForm.motivation.trim()
+
+    if (!expertise || !experience || !motivation) {
+      setMentorApplicationFeedback({
+        type: 'error',
+        message: 'Completa tu especialidad, experiencia y motivacion para enviar la solicitud.',
+      })
+      return
+    }
+
+    setIsSubmittingMentorApplication(true)
+    setMentorApplicationFeedback(null)
+
+    try {
+      await submitMentorApplicationRequest({ expertise, experience, motivation })
+      setMentorApplicationForm({ expertise: '', experience: '', motivation: '' })
+      setMentorApplicationFeedback({
+        type: 'success',
+        message: 'Solicitud enviada. Revisaremos tu perfil y te contactaremos cuando haya una decision.',
+      })
+    } catch (error) {
+      setMentorApplicationFeedback({
+        type: 'error',
+        message:
+          error instanceof Error ? error.message : 'No se pudo enviar la solicitud para ser mentor.',
+      })
+    } finally {
+      setIsSubmittingMentorApplication(false)
     }
   }
 
@@ -1011,8 +1213,8 @@ export default function Aprendizaje() {
                   Esta cuenta no puede crear contenido desde aqui
                 </h1>
                 <p className="mt-4 max-w-2xl text-sm leading-6 text-muted-foreground md:text-base">
-                  Esta seccion de creacion solo esta disponible para ciertas cuentas, asi que te
-                  mostramos una vista simple y sin opciones que no puedas usar.
+                  Aun puedes explorar los cursos. Si quieres crear contenido, completa la solicitud
+                  de mentor y te mostraremos claramente que informacion necesitamos.
                 </p>
               </div>
 
@@ -1024,17 +1226,82 @@ export default function Aprendizaje() {
                   </p>
                 </div>
 
-                <div className="rounded-[1.5rem] border border-border/70 bg-background/70 p-5">
-                  <p className="text-sm font-semibold text-foreground">Como funciona</p>
-                  <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                    Si en algun momento tu cuenta recibe permisos de creador, aqui mismo podras armar cursos,
-                    unidades y lecciones paso a paso.
-                  </p>
-                </div>
+                <form
+                  className="rounded-[1.5rem] border border-primary/20 bg-primary/6 p-5"
+                  onSubmit={handleSubmitMentorApplication}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="rounded-2xl bg-primary/12 p-3 text-primary">
+                      <UserRoundPlus className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">Postularme como mentor</p>
+                      <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                        Cuéntanos en que enseñas, que experiencia tienes y por que quieres acompañar a la comunidad.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-5 space-y-4">
+                    <label className="block">
+                      <span className="text-sm font-medium text-foreground">Especialidad</span>
+                      <input
+                        className="mt-2 w-full rounded-2xl border border-border bg-background px-4 py-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+                        maxLength={255}
+                        placeholder="Ej. Finanzas para pymes"
+                        value={mentorApplicationForm.expertise}
+                        onChange={(event) => handleMentorApplicationFormChange('expertise', event.target.value)}
+                      />
+                    </label>
+
+                    <label className="block">
+                      <span className="text-sm font-medium text-foreground">Experiencia relevante</span>
+                      <textarea
+                        className="mt-2 min-h-28 w-full rounded-[1.5rem] border border-border bg-background px-4 py-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+                        placeholder="Describe tu experiencia, proyectos o trayectoria en el tema."
+                        value={mentorApplicationForm.experience}
+                        onChange={(event) => handleMentorApplicationFormChange('experience', event.target.value)}
+                      />
+                    </label>
+
+                    <label className="block">
+                      <span className="text-sm font-medium text-foreground">Motivacion</span>
+                      <textarea
+                        className="mt-2 min-h-28 w-full rounded-[1.5rem] border border-border bg-background px-4 py-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+                        placeholder="¿Que te motiva a compartir conocimiento en Mentras?"
+                        value={mentorApplicationForm.motivation}
+                        onChange={(event) => handleMentorApplicationFormChange('motivation', event.target.value)}
+                      />
+                    </label>
+                  </div>
+
+                  {mentorApplicationFeedback ? (
+                    <div
+                      className={`mt-4 rounded-2xl border px-4 py-3 text-sm ${
+                        mentorApplicationFeedback.type === 'success'
+                          ? 'border-primary/25 bg-primary/10 text-foreground'
+                          : 'border-accent/30 bg-accent/10 text-foreground'
+                      }`}
+                      role={mentorApplicationFeedback.type === 'error' ? 'alert' : 'status'}
+                    >
+                      {mentorApplicationFeedback.message}
+                    </div>
+                  ) : null}
+
+                  <button
+                    className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-full bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/20 transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-70"
+                    disabled={isSubmittingMentorApplication}
+                    type="submit"
+                  >
+                    {isSubmittingMentorApplication ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <UserRoundPlus className="h-4 w-4" />}
+                    {isSubmittingMentorApplication ? 'Enviando solicitud...' : 'Enviar solicitud'}
+                  </button>
+                </form>
               </div>
             </section>
 
             <aside className="space-y-5">
+              {user?.is_admin ? <MentorApplicationsAdminPanel /> : null}
               <div className="rounded-[2rem] border border-border/70 bg-card/92 p-6 backdrop-blur">
                 <p className="text-xs font-medium tracking-[0.24em] text-muted-foreground uppercase">
                   Jerarquia
@@ -1282,6 +1549,131 @@ export default function Aprendizaje() {
                       </p>
                     </div>
                   </div>
+
+                  {selectedCourse ? (
+                    <div className="mt-5 rounded-[1.5rem] border border-border/70 bg-background/70 p-5">
+                      {editingCourseId === selectedCourse.id ? (
+                        <form className="space-y-4" onSubmit={(event) => handleUpdateCourse(event, selectedCourse)}>
+                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                              <p className="text-sm font-semibold text-foreground">Editando los datos del curso</p>
+                              <p className="mt-1 text-sm text-muted-foreground">
+                                Estos cambios se reflejan en el catalogo y en la pagina del curso.
+                              </p>
+                            </div>
+                            <span className="rounded-full border border-primary/20 bg-primary/8 px-3 py-1 text-xs font-medium text-primary">
+                              Solo tu puedes editarlo
+                            </span>
+                          </div>
+
+                          <label className="block">
+                            <span className="text-sm font-medium text-foreground">Nombre del curso</span>
+                            <input
+                              className="mt-2 w-full rounded-2xl border border-border bg-card px-4 py-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+                              value={courseEditForm.name}
+                              onChange={(event) => handleCourseEditFormChange('name', event.target.value)}
+                            />
+                          </label>
+
+                          <label className="block">
+                            <span className="text-sm font-medium text-foreground">Descripcion del curso</span>
+                            <textarea
+                              className="mt-2 min-h-28 w-full rounded-[1.5rem] border border-border bg-card px-4 py-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+                              value={courseEditForm.description}
+                              onChange={(event) => handleCourseEditFormChange('description', event.target.value)}
+                            />
+                          </label>
+
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              className="inline-flex items-center justify-center gap-2 rounded-full bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-70"
+                              disabled={isSavingCourse}
+                              type="submit"
+                            >
+                              {isSavingCourse ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <CircleCheckBig className="h-4 w-4" />}
+                              {isSavingCourse ? 'Guardando...' : 'Guardar cambios'}
+                            </button>
+                            <button
+                              className="rounded-full border border-border bg-card px-5 py-3 text-sm font-semibold text-foreground transition hover:bg-muted"
+                              disabled={isSavingCourse}
+                              type="button"
+                              onClick={handleCancelCourseEdit}
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+                        </form>
+                      ) : (
+                        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                          <div>
+                            <p className="text-sm font-semibold text-foreground">Datos del curso seleccionado</p>
+                            <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                              Corrige su nombre o descripcion antes de seguir agregando contenido.
+                            </p>
+                          </div>
+                          {coursePendingDeletionId === selectedCourse.id ? (
+                            <div className="rounded-2xl border border-destructive/30 bg-destructive/8 p-3">
+                              <p className="text-sm font-semibold text-foreground">¿Eliminar este curso y todo su contenido?</p>
+                              <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                                Esta accion borra tambien sus unidades y lecciones. No se puede deshacer.
+                              </p>
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                <button
+                                  className="rounded-full border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground transition hover:bg-muted"
+                                  disabled={isDeletingCourseId === selectedCourse.id}
+                                  type="button"
+                                  onClick={() => setCoursePendingDeletionId('')}
+                                >
+                                  Conservar curso
+                                </button>
+                                <button
+                                  className="inline-flex items-center gap-2 rounded-full bg-destructive px-4 py-2 text-sm font-semibold text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-70"
+                                  disabled={isDeletingCourseId === selectedCourse.id}
+                                  type="button"
+                                  onClick={() => void handleDeleteCourse(selectedCourse)}
+                                >
+                                  {isDeletingCourseId === selectedCourse.id ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                                  {isDeletingCourseId === selectedCourse.id ? 'Eliminando...' : 'Si, eliminar curso'}
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-4 py-2.5 text-sm font-semibold text-foreground transition hover:border-primary/35 hover:bg-primary/6"
+                                type="button"
+                                onClick={() => handleStartCourseEdit(selectedCourse)}
+                              >
+                                <PencilLine className="h-4 w-4" />
+                                Editar curso
+                              </button>
+                              <button
+                                className="inline-flex items-center gap-2 rounded-full border border-destructive/30 bg-destructive/8 px-4 py-2.5 text-sm font-semibold text-foreground transition hover:bg-destructive/12"
+                                type="button"
+                                onClick={() => setCoursePendingDeletionId(selectedCourse.id ?? '')}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                                Eliminar curso
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {courseManagementFeedback ? (
+                        <div
+                          className={`mt-4 rounded-2xl border px-4 py-3 text-sm ${
+                            courseManagementFeedback.type === 'success'
+                              ? 'border-primary/25 bg-primary/8 text-foreground'
+                              : 'border-accent/30 bg-accent/10 text-foreground'
+                          }`}
+                          role={courseManagementFeedback.type === 'error' ? 'alert' : 'status'}
+                        >
+                          {courseManagementFeedback.message}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
 
                   {structureFeedback ? (
                     <div
@@ -1681,6 +2073,7 @@ export default function Aprendizaje() {
           </section>
 
           <aside className="space-y-5">
+            {user?.is_admin ? <MentorApplicationsAdminPanel /> : null}
             <div className="rounded-[2rem] border border-border/70 bg-card/92 p-6 shadow-[0_24px_60px_-50px_rgba(38,50,56,0.45)] backdrop-blur">
               <p className="text-xs font-medium tracking-[0.24em] text-muted-foreground uppercase">
                 Resumen mentor

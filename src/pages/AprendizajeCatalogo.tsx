@@ -1,9 +1,22 @@
 import { useEffect, useState } from 'react'
-import { ArrowRight, BarChart3, BookOpen, FolderPlus, Layers3, LoaderCircle, PlayCircle, Sparkles } from 'lucide-react'
+import type { FormEvent } from 'react'
+import {
+  ArrowRight,
+  BarChart3,
+  BookOpen,
+  FolderPlus,
+  Layers3,
+  LoaderCircle,
+  PlayCircle,
+  Send,
+  Sparkles,
+  UserRoundPlus,
+} from 'lucide-react'
 import { Link } from 'react-router-dom'
 
 import { countLessons } from '@/components/learning/course-learning-types'
 import type { UnitSummary } from '@/components/learning/course-learning-types'
+import { MentorApplicationsAdminPanel } from '@/components/learning/mentor-applications-admin'
 import Footer from '@/components/ui/Footer'
 import Header from '@/components/ui/Header'
 import { authFetch, clearAuthTokens, getStoredUserId, hasStoredSession } from '@/lib/auth'
@@ -12,8 +25,18 @@ import { buildBackendUrl } from '@/lib/utils'
 
 type UserProfile = {
   id?: string
+  is_admin?: boolean
   is_mentor?: boolean
   username?: string
+}
+type MentorApplicationFormState = {
+  expertise: string
+  experience: string
+  motivation: string
+}
+type FeedbackState = {
+  type: 'success' | 'error'
+  message: string
 }
 type CourseSummary = {
   id?: string
@@ -268,24 +291,49 @@ const fetchCourses = async () => {
   return normalizeCoursesResponse(data)
 }
 
+const submitMentorApplicationRequest = async (payload: MentorApplicationFormState) => {
+  const response = await authFetch(buildBackendUrl('/api/learning/mentor/apply/'), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  })
+
+  await ensureSuccessfulResponse(response, 'No se pudo enviar la solicitud para ser mentor.')
+}
+
 export default function AprendizajeCatalogo() {
   const { language } = usePreferences()
   const t = getLocalizedCopy(copy, language)
   const userId = getStoredUserId()
   const [user, setUser] = useState<UserProfile | null>(null)
   const [courses, setCourses] = useState<CourseSummary[]>([])
-  const [isLoadingUser, setIsLoadingUser] = useState(true)
+  const [isLoadingUser, setIsLoadingUser] = useState(Boolean(userId))
   const [isLoadingCourses, setIsLoadingCourses] = useState(false)
   const [pageError, setPageError] = useState<string | null>(null)
   const [coursesError, setCoursesError] = useState<string | null>(null)
   const [currentCatalogPage, setCurrentCatalogPage] = useState(1)
+  const [mentorApplicationForm, setMentorApplicationForm] = useState<MentorApplicationFormState>({
+    expertise: '',
+    experience: '',
+    motivation: '',
+  })
+  const [isSubmittingMentorApplication, setIsSubmittingMentorApplication] = useState(false)
+  const [mentorApplicationFeedback, setMentorApplicationFeedback] = useState<FeedbackState | null>(null)
 
   const totalCatalogPages = Math.max(1, Math.ceil(courses.length / COURSES_PER_PAGE))
+  const visibleCatalogPage = Math.min(currentCatalogPage, totalCatalogPages)
   const paginatedCourses = courses.slice(
-    (currentCatalogPage - 1) * COURSES_PER_PAGE,
-    currentCatalogPage * COURSES_PER_PAGE,
+    (visibleCatalogPage - 1) * COURSES_PER_PAGE,
+    visibleCatalogPage * COURSES_PER_PAGE,
   )
   const canCreateCourses = Boolean(user?.is_mentor)
+  const canApplyToBeMentor = Boolean(user && !user.is_mentor)
+  const missingUserError = !userId
+    ? 'No pudimos identificar tu cuenta para cargar esta seccion.'
+    : null
+  const visiblePageError = pageError ?? missingUserError
 
   useEffect(() => {
     if (!hasStoredSession()) {
@@ -293,11 +341,7 @@ export default function AprendizajeCatalogo() {
       return
     }
 
-    if (!userId) {
-      setIsLoadingUser(false)
-      setPageError('No pudimos identificar tu cuenta para cargar esta seccion.')
-      return
-    }
+    if (!userId) return
 
     const loadUser = async () => {
       try {
@@ -344,10 +388,6 @@ export default function AprendizajeCatalogo() {
     void loadCourses()
   }, [user])
 
-  useEffect(() => {
-    setCurrentCatalogPage((currentPage) => Math.min(currentPage, totalCatalogPages))
-  }, [totalCatalogPages])
-
   const renderCatalogPagination = () => {
     if (totalCatalogPages <= 1) {
       return null
@@ -356,12 +396,12 @@ export default function AprendizajeCatalogo() {
     return (
       <div className="mt-5 flex items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
-          {t.page} {currentCatalogPage} {t.of} {totalCatalogPages}
+          {t.page} {visibleCatalogPage} {t.of} {totalCatalogPages}
         </p>
         <div className="flex gap-2">
           <button
             className="rounded-full border border-border bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
-            disabled={currentCatalogPage === 1}
+            disabled={visibleCatalogPage === 1}
             type="button"
             onClick={() => setCurrentCatalogPage((page) => Math.max(1, page - 1))}
           >
@@ -369,7 +409,7 @@ export default function AprendizajeCatalogo() {
           </button>
           <button
             className="rounded-full border border-border bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
-            disabled={currentCatalogPage === totalCatalogPages}
+            disabled={visibleCatalogPage === totalCatalogPages}
             type="button"
             onClick={() => setCurrentCatalogPage((page) => Math.min(totalCatalogPages, page + 1))}
           >
@@ -378,6 +418,57 @@ export default function AprendizajeCatalogo() {
         </div>
       </div>
     )
+  }
+
+  const handleMentorApplicationFormChange = (
+    field: keyof MentorApplicationFormState,
+    value: string,
+  ) => {
+    setMentorApplicationForm((currentForm) => ({
+      ...currentForm,
+      [field]: value,
+    }))
+    setMentorApplicationFeedback(null)
+  }
+
+  const handleSubmitMentorApplication = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+
+    const expertise = mentorApplicationForm.expertise.trim()
+    const experience = mentorApplicationForm.experience.trim()
+    const motivation = mentorApplicationForm.motivation.trim()
+
+    if (!expertise || !experience || !motivation) {
+      setMentorApplicationFeedback({
+        type: 'error',
+        message: 'Completa tu especialidad, experiencia y motivacion antes de enviar la solicitud.',
+      })
+      return
+    }
+
+    setIsSubmittingMentorApplication(true)
+    setMentorApplicationFeedback(null)
+
+    try {
+      await submitMentorApplicationRequest({ expertise, experience, motivation })
+      setMentorApplicationForm({
+        expertise: '',
+        experience: '',
+        motivation: '',
+      })
+      setMentorApplicationFeedback({
+        type: 'success',
+        message: 'Solicitud enviada. El equipo de Mentras revisara tu perfil y te avisara cuando haya una decision.',
+      })
+    } catch (error) {
+      setMentorApplicationFeedback({
+        type: 'error',
+        message:
+          error instanceof Error ? error.message : 'No se pudo enviar la solicitud para ser mentor.',
+      })
+    } finally {
+      setIsSubmittingMentorApplication(false)
+    }
   }
 
   if (isLoadingUser) {
@@ -397,14 +488,14 @@ export default function AprendizajeCatalogo() {
     )
   }
 
-  if (pageError) {
+  if (visiblePageError) {
     return (
       <main className="relative min-h-screen overflow-hidden text-foreground">
         <Header />
         <section className="px-6 py-14 md:px-12 lg:px-24 xl:px-40">
           <div className="mx-auto max-w-6xl rounded-[2rem] border border-accent/25 bg-card/90 p-8 shadow-sm">
             <h1 className="text-2xl font-semibold tracking-tight">{t.errorTitle}</h1>
-            <p className="mt-3 text-sm leading-6 text-muted-foreground">{pageError}</p>
+            <p className="mt-3 text-sm leading-6 text-muted-foreground">{visiblePageError}</p>
           </div>
         </section>
         <Footer />
@@ -473,6 +564,87 @@ export default function AprendizajeCatalogo() {
               </aside>
             </div>
           </section>
+
+          {canApplyToBeMentor ? (
+            <section className="rounded-[2rem] border border-primary/20 bg-card/92 p-6 backdrop-blur">
+              <div className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr] lg:items-start">
+                <div>
+                  <div className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/12 text-primary">
+                    <UserRoundPlus className="h-5 w-5" />
+                  </div>
+                  <p className="mt-4 text-xs font-medium tracking-[0.24em] text-primary uppercase">
+                    Solicitud de creador
+                  </p>
+                  <h2 className="mt-2 text-2xl font-semibold tracking-tight">
+                    Postulate para crear cursos en Mentras
+                  </h2>
+                  <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                    Cuéntanos qué dominas, qué experiencia tienes y por qué quieres acompañar a otros usuarios.
+                  </p>
+                </div>
+
+                <form className="space-y-4" onSubmit={(event) => void handleSubmitMentorApplication(event)}>
+                  <label className="block">
+                    <span className="text-sm font-semibold text-foreground">Especialidad</span>
+                    <input
+                      className="mt-2 w-full rounded-2xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:border-primary"
+                      placeholder="Ej. Finanzas para pequeñas empresas"
+                      value={mentorApplicationForm.expertise}
+                      onChange={(event) => handleMentorApplicationFormChange('expertise', event.target.value)}
+                    />
+                  </label>
+
+                  <label className="block">
+                    <span className="text-sm font-semibold text-foreground">Experiencia</span>
+                    <textarea
+                      className="mt-2 min-h-28 w-full resize-y rounded-2xl border border-border bg-background px-4 py-3 text-sm leading-6 text-foreground outline-none transition focus:border-primary"
+                      placeholder="Resume tu experiencia de forma concreta."
+                      value={mentorApplicationForm.experience}
+                      onChange={(event) => handleMentorApplicationFormChange('experience', event.target.value)}
+                    />
+                  </label>
+
+                  <label className="block">
+                    <span className="text-sm font-semibold text-foreground">Motivacion</span>
+                    <textarea
+                      className="mt-2 min-h-28 w-full resize-y rounded-2xl border border-border bg-background px-4 py-3 text-sm leading-6 text-foreground outline-none transition focus:border-primary"
+                      placeholder="Explica por qué quieres crear contenido para la comunidad."
+                      value={mentorApplicationForm.motivation}
+                      onChange={(event) => handleMentorApplicationFormChange('motivation', event.target.value)}
+                    />
+                  </label>
+
+                  {mentorApplicationFeedback ? (
+                    <div
+                      className={`rounded-2xl border px-4 py-3 text-sm ${
+                        mentorApplicationFeedback.type === 'success'
+                          ? 'border-primary/25 bg-primary/8 text-foreground'
+                          : 'border-destructive/25 bg-destructive/10 text-foreground'
+                      }`}
+                      role={mentorApplicationFeedback.type === 'error' ? 'alert' : 'status'}
+                    >
+                      {mentorApplicationFeedback.message}
+                    </div>
+                  ) : null}
+
+                  <button
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/20 transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-70 sm:w-auto"
+                    disabled={isSubmittingMentorApplication}
+                    type="submit"
+                  >
+                    {isSubmittingMentorApplication ? (
+                      <LoaderCircle className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Send className="h-4 w-4" />
+                    )}
+                    {isSubmittingMentorApplication ? 'Enviando solicitud...' : 'Enviar solicitud'}
+                  </button>
+                </form>
+              </div>
+            </section>
+          ) : null}
+
+          {user?.is_admin ? <MentorApplicationsAdminPanel /> : null}
 
           <section className="rounded-[2rem] border border-border/70 bg-card/92 p-6 backdrop-blur">
             <div className="flex items-center justify-between gap-3">
