@@ -16,6 +16,7 @@ import Settings from "./pages/Settings";
 import Contacto from "./pages/Contacto";
 import Privacidad from "./pages/Privacidad";
 import Terminos from "./pages/Terminos";
+import Chatbot from "./pages/Chatbot";
 
 import { SiteBackground } from "@/components/ui/site-background";
 
@@ -42,6 +43,7 @@ export default function App() {
           <Route path="/privacidad" element={<Privacidad />} />
           <Route path="/terminos" element={<Terminos />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/chatbot" element={<Chatbot />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </div>
