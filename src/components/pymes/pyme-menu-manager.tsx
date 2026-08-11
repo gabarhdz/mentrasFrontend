@@ -1273,6 +1273,35 @@ const PymeMenuManager = () => {
     )
   }
 
+  if (user?.is_email_verified === false) {
+    return (
+      <section className="mx-auto w-full max-w-5xl px-6 pb-16 md:px-8 md:pb-20">
+        <Reveal>
+          <div className="rounded-[2rem] border border-amber-200 bg-card p-8 shadow-sm">
+            <div className="flex max-w-3xl flex-col gap-4 md:flex-row md:items-start">
+              <div className="inline-flex w-fit rounded-2xl bg-amber-100 p-3 text-amber-700">
+                <CircleAlert className="size-5" />
+              </div>
+              <div>
+                <p className="text-sm font-medium uppercase tracking-[0.22em] text-amber-700">
+                  Verificación pendiente
+                </p>
+                <h2 className="mt-3 text-2xl font-semibold tracking-tight">
+                  Verifica tu email para abrir menús e inventario
+                </h2>
+                <p className="mt-3 text-sm leading-6 text-muted-foreground sm:text-base">
+                  Tu cuenta sí tiene permisos de propietario, pero el backend protege esta sección
+                  hasta que el email esté verificado. Completa la verificación y vuelve a cargar
+                  el dashboard.
+                </p>
+              </div>
+            </div>
+          </div>
+        </Reveal>
+      </section>
+    )
+  }
+
   if (!user?.is_pyme_owner) {
     return (
       <section className="mx-auto w-full max-w-5xl px-6 pb-16 md:px-8 md:pb-20">

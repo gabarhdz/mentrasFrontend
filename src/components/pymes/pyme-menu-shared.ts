@@ -3,6 +3,7 @@ import { buildBackendUrl } from '@/lib/utils'
 export type UserProfile = {
   id?: string
   is_pyme_owner?: boolean
+  is_email_verified?: boolean
 }
 
 export type StockItem = {
