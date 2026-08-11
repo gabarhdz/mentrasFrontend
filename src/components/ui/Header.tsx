@@ -2,17 +2,54 @@ import React from 'react'
 import { Link, NavLink } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { languageOptions, type Language, usePreferences } from '@/lib/preferences'
+import { authFetch, getStoredUserId, hasStoredSession } from '@/lib/auth'
+import { buildBackendUrl } from '@/lib/utils'
+
+type HeaderUserProfile = {
+  is_admin?: boolean
+  is_superuser?: boolean
+}
 
 const Header = () => {
   const [menuOpen, setMenuOpen] = React.useState(false)
+  const [user, setUser] = React.useState<HeaderUserProfile | null>(null)
   const { language, setLanguage } = usePreferences()
   const { t } = useTranslation()
+
+  React.useEffect(() => {
+    if (!hasStoredSession()) return
+
+    const userId = getStoredUserId()
+    if (!userId) return
+
+    let isCurrent = true
+
+    const loadUser = async () => {
+      try {
+        const response = await authFetch(buildBackendUrl(`/api/user/${userId}/`))
+        if (!response.ok) return
+        const profile = (await response.json()) as HeaderUserProfile
+        if (isCurrent) setUser(profile)
+      } catch {
+        if (isCurrent) setUser(null)
+      }
+    }
+
+    void loadUser()
+
+    return () => {
+      isCurrent = false
+    }
+  }, [])
+
+  const canManageMentorApplications = Boolean(user?.is_admin || user?.is_superuser)
   const navItems = [
     { label: t('nav.pymes'), to: '/pymes' },
     { label: t('nav.learning'), to: '/aprendizaje' },
     { label: t('nav.tools'), to: '/herramientas' },
     { label: t('nav.dashboard'), to: '/dashboard' },
     { label: t('nav.blog'), to: '/blog' },
+    ...(canManageMentorApplications ? [{ label: t('nav.admin'), to: '/admin/solicitudes-mentor' }] : []),
     { label: t('nav.settings'), to: '/settings' },
   ]
 

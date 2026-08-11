@@ -60,6 +60,7 @@ type UserProfile = {
   id?: string
   username?: string
   is_admin?: boolean
+  is_superuser?: boolean
   is_mentor?: boolean
 }
 
@@ -1301,7 +1302,7 @@ export default function Aprendizaje() {
             </section>
 
             <aside className="space-y-5">
-              {user?.is_admin ? <MentorApplicationsAdminPanel /> : null}
+              {user?.is_admin || user?.is_superuser ? <MentorApplicationsAdminPanel /> : null}
               <div className="rounded-[2rem] border border-border/70 bg-card/92 p-6 backdrop-blur">
                 <p className="text-xs font-medium tracking-[0.24em] text-muted-foreground uppercase">
                   Jerarquia
@@ -2073,7 +2074,7 @@ export default function Aprendizaje() {
           </section>
 
           <aside className="space-y-5">
-            {user?.is_admin ? <MentorApplicationsAdminPanel /> : null}
+            {user?.is_admin || user?.is_superuser ? <MentorApplicationsAdminPanel /> : null}
             <div className="rounded-[2rem] border border-border/70 bg-card/92 p-6 shadow-[0_24px_60px_-50px_rgba(38,50,56,0.45)] backdrop-blur">
               <p className="text-xs font-medium tracking-[0.24em] text-muted-foreground uppercase">
                 Resumen mentor

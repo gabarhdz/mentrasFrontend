@@ -10,6 +10,7 @@ import AprendizajeCatalogo from "./pages/AprendizajeCatalogo";
 import CursoAprendizaje from "./pages/CursoAprendizaje";
 import Herramientas from "./pages/Herramientas";
 import Dashboard from "./pages/Dashboard";
+import AdminMentorApplications from "./pages/AdminMentorApplications";
 import Blog from "./pages/Blog";
 import Settings from "./pages/Settings";
 import Contacto from "./pages/Contacto";
@@ -35,6 +36,7 @@ export default function App() {
           <Route path="/aprendizaje/cursos/:courseId" element={<CursoAprendizaje />} />
           <Route path="/herramientas" element={<Herramientas />} />
           <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/admin/solicitudes-mentor" element={<AdminMentorApplications />} />
           <Route path="/blog" element={<Blog />} />
           <Route path="/contacto" element={<Contacto />} />
           <Route path="/privacidad" element={<Privacidad />} />

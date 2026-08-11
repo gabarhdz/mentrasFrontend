@@ -26,6 +26,7 @@ import { buildBackendUrl } from '@/lib/utils'
 type UserProfile = {
   id?: string
   is_admin?: boolean
+  is_superuser?: boolean
   is_mentor?: boolean
   username?: string
 }
@@ -644,7 +645,7 @@ export default function AprendizajeCatalogo() {
             </section>
           ) : null}
 
-          {user?.is_admin ? <MentorApplicationsAdminPanel /> : null}
+          {user?.is_admin || user?.is_superuser ? <MentorApplicationsAdminPanel /> : null}
 
           <section className="rounded-[2rem] border border-border/70 bg-card/92 p-6 backdrop-blur">
             <div className="flex items-center justify-between gap-3">
