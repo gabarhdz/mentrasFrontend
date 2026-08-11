@@ -1,8 +1,10 @@
 import { type FormEvent, useCallback, useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Check, CircleAlert, LoaderCircle, Plus, Trash2, Users, X } from 'lucide-react'
 
 import { authFetch, clearAuthTokens, getStoredUserId, hasStoredSession } from '@/lib/auth'
 import { buildBackendUrl } from '@/lib/utils'
+import { resolveMediaUrl } from '@/components/pymes/pyme-menu-shared'
 
 const roles = ['manager', 'employee', 'inventory'] as const
 type EmployeeRole = (typeof roles)[number]
@@ -13,12 +15,20 @@ type Employee = {
   username: string
   email: string
   role: EmployeeRole
+  profile_pic?: string
   created_at?: string
 }
 
 type Props = {
   pymeId: string
   pymeName: string
+}
+
+type UserSearchResult = {
+  id: string
+  username: string
+  email: string
+  profile_pic?: string
 }
 
 const isRole = (value: unknown): value is EmployeeRole =>
@@ -34,7 +44,20 @@ const asEmployee = (value: unknown): Employee | null => {
     username: typeof entry.username === 'string' ? entry.username : 'Usuario sin nombre',
     email: typeof entry.email === 'string' ? entry.email : 'Sin email',
     role: isRole(entry.role) ? entry.role : 'employee',
+    profile_pic: typeof entry.profile_pic === 'string' ? entry.profile_pic : undefined,
     created_at: typeof entry.created_at === 'string' ? entry.created_at : undefined,
+  }
+}
+
+const asUserSearchResult = (value: unknown): UserSearchResult | null => {
+  if (!value || typeof value !== 'object') return null
+  const entry = value as Record<string, unknown>
+  if (typeof entry.id !== 'string' || typeof entry.username !== 'string') return null
+  return {
+    id: entry.id,
+    username: entry.username,
+    email: typeof entry.email === 'string' ? entry.email : '',
+    profile_pic: typeof entry.profile_pic === 'string' ? entry.profile_pic : undefined,
   }
 }
 
@@ -67,7 +90,10 @@ export default function PymeEmployeesManager({ pymeId, pymeName }: Props) {
   const [isOwner, setIsOwner] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [activeOperation, setActiveOperation] = useState<string | null>(null)
-  const [userId, setUserId] = useState('')
+  const [userSearch, setUserSearch] = useState('')
+  const [selectedUser, setSelectedUser] = useState<UserSearchResult | null>(null)
+  const [userDirectory, setUserDirectory] = useState<UserSearchResult[]>([])
+  const [isLoadingUsers, setIsLoadingUsers] = useState(false)
   const [role, setRole] = useState<EmployeeRole>('employee')
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
 
@@ -115,13 +141,40 @@ export default function PymeEmployeesManager({ pymeId, pymeName }: Props) {
         throw new Error(await responseMessage(response, 'No se pudieron cargar los empleados.'))
       }
       const payload = await response.json()
-      setEmployees(Array.isArray(payload) ? payload.map(asEmployee).filter((entry): entry is Employee => entry !== null) : [])
+      const normalizedEmployees = Array.isArray(payload)
+        ? payload.map(asEmployee).filter((entry): entry is Employee => entry !== null)
+        : []
+      setEmployees(normalizedEmployees.map((employee) => {
+        const directoryUser = userDirectory.find(
+          (entry) => entry.username === employee.username || (employee.email !== 'Sin email' && entry.email === employee.email),
+        )
+        return directoryUser?.profile_pic && !employee.profile_pic
+          ? { ...employee, profile_pic: directoryUser.profile_pic }
+          : employee
+      }))
     } catch (error) {
       setFeedback({ type: 'error', message: error instanceof Error ? error.message : 'No se pudieron cargar los empleados.' })
     } finally {
       setIsLoading(false)
     }
-  }, [handleSessionError, pymeId])
+  }, [handleSessionError, pymeId, userDirectory])
+
+  const loadUserDirectory = useCallback(async () => {
+    setIsLoadingUsers(true)
+    try {
+      const response = await authFetch(buildBackendUrl('/api/user/'))
+      if (!response.ok) {
+        if (handleSessionError(response.status)) return
+        throw new Error(await responseMessage(response, 'No se pudieron buscar usuarios.'))
+      }
+      const payload = await response.json()
+      setUserDirectory(Array.isArray(payload) ? payload.map(asUserSearchResult).filter((entry): entry is UserSearchResult => entry !== null) : [])
+    } catch (error) {
+      setFeedback({ type: 'error', message: error instanceof Error ? error.message : 'No se pudieron buscar usuarios.' })
+    } finally {
+      setIsLoadingUsers(false)
+    }
+  }, [handleSessionError])
 
   useEffect(() => {
     if (!isOpen) return
@@ -129,11 +182,24 @@ export default function PymeEmployeesManager({ pymeId, pymeName }: Props) {
     return () => window.clearTimeout(timer)
   }, [isOpen, loadEmployees])
 
+  useEffect(() => {
+    if (!isOpen || userDirectory.length > 0) return
+    const timer = window.setTimeout(() => void loadUserDirectory(), 0)
+    return () => window.clearTimeout(timer)
+  }, [isOpen, loadUserDirectory, userDirectory.length])
+
+  const matchingUsers = userSearch.trim().length < 2
+    ? []
+    : userDirectory
+        .filter((entry) => `${entry.username} ${entry.email} ${entry.id}`.toLowerCase().includes(userSearch.trim().toLowerCase()))
+        .filter((entry) => entry.id !== getStoredUserId())
+        .slice(0, 6)
+
   const handleAdd = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    const normalizedUserId = userId.trim()
+    const normalizedUserId = selectedUser?.id ?? userSearch.trim()
     if (!normalizedUserId) {
-      setFeedback({ type: 'error', message: 'Introduce el UUID del usuario que quieres añadir.' })
+      setFeedback({ type: 'error', message: 'Busca un nickname o introduce un UUID válido.' })
       return
     }
     setActiveOperation('add')
@@ -150,7 +216,8 @@ export default function PymeEmployeesManager({ pymeId, pymeName }: Props) {
       }
       const added = asEmployee(await response.json())
       if (added) setEmployees((current) => [...current, added])
-      setUserId('')
+      setUserSearch('')
+      setSelectedUser(null)
       setRole('employee')
       setFeedback({ type: 'success', message: 'Empleado añadido correctamente.' })
     } catch (error) {
@@ -209,7 +276,7 @@ export default function PymeEmployeesManager({ pymeId, pymeName }: Props) {
         <Users className="size-4" /> Gestionar empleados
       </button>
 
-      {isOpen ? (
+      {isOpen ? createPortal(
         <div className="fixed inset-0 z-[10001] flex items-center justify-center bg-black/45 p-4" role="dialog" aria-modal="true" aria-labelledby={`employees-${pymeId}`}>
           <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-3xl border border-border bg-background p-6 shadow-2xl">
             <div className="flex items-start justify-between gap-4">
@@ -226,18 +293,25 @@ export default function PymeEmployeesManager({ pymeId, pymeName }: Props) {
             {!isOwner && !isLoading ? null : (
               <>
                 <form onSubmit={handleAdd} className="mt-6 grid gap-3 rounded-2xl border border-border/80 bg-card/60 p-4 md:grid-cols-[1fr_180px_auto] md:items-end">
-                  <label className="text-sm font-medium">UUID del usuario<input value={userId} onChange={(event) => setUserId(event.target.value)} placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary" /></label>
+                  <div className="relative">
+                    <label className="text-sm font-medium" htmlFor={`employee-search-${pymeId}`}>Buscar usuario</label>
+                    <input id={`employee-search-${pymeId}`} value={userSearch} onChange={(event) => { setUserSearch(event.target.value); setSelectedUser(null) }} placeholder="Nickname o UUID" className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary" autoComplete="off" />
+                    {isLoadingUsers ? <span className="absolute right-3 top-9"><LoaderCircle className="size-4 animate-spin text-muted-foreground" /></span> : null}
+                    {matchingUsers.length > 0 ? <div className="absolute left-0 right-0 top-full z-10 mt-1 max-h-64 overflow-y-auto rounded-2xl border border-border bg-background p-1 shadow-xl">{matchingUsers.map((candidate) => <button type="button" key={candidate.id} onClick={() => { setSelectedUser(candidate); setUserSearch(candidate.username) }} className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left hover:bg-muted"><span className="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary/10 text-xs font-semibold text-primary">{candidate.profile_pic ? <img src={resolveMediaUrl(candidate.profile_pic) ?? undefined} alt="" className="size-full object-cover" /> : candidate.username.slice(0, 1).toUpperCase()}</span><span className="min-w-0"><span className="block truncate text-sm font-semibold">{candidate.username}</span><span className="block truncate text-xs text-muted-foreground">{candidate.email || candidate.id}</span></span></button>)}</div> : null}
+                    {selectedUser ? <p className="mt-1 text-xs text-primary">Seleccionado: {selectedUser.username}</p> : null}
+                  </div>
                   <label className="text-sm font-medium">Rol<select value={role} onChange={(event) => setRole(event.target.value as EmployeeRole)} className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary">{roles.map((entry) => <option key={entry} value={entry}>{roleLabel[entry]}</option>)}</select></label>
                   <button type="submit" disabled={activeOperation !== null} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60">{activeOperation === 'add' ? <LoaderCircle className="size-4 animate-spin" /> : <Plus className="size-4" />} Añadir</button>
                 </form>
 
                 <div className="mt-6 space-y-3">
-                  {isLoading ? <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground"><LoaderCircle className="size-5 animate-spin" /> Cargando empleados…</div> : employees.length === 0 ? <p className="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">Todavía no hay empleados en esta pyme.</p> : employees.map((employee) => <div key={employee.id} className="flex flex-col gap-3 rounded-2xl border border-border/80 bg-card p-4 md:flex-row md:items-center md:justify-between"><div className="min-w-0"><p className="truncate font-semibold">{employee.username}</p><p className="truncate text-sm text-muted-foreground">{employee.email}</p></div><div className="flex items-center gap-2"><select value={employee.role} disabled={activeOperation !== null} onChange={(event) => void handleRoleChange(employee, event.target.value as EmployeeRole)} className="rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary">{roles.map((entry) => <option key={entry} value={entry}>{roleLabel[entry]}</option>)}</select><button type="button" disabled={activeOperation !== null} onClick={() => void handleDelete(employee)} className="inline-flex items-center gap-1 rounded-xl border border-destructive/25 px-3 py-2 text-sm font-medium text-destructive hover:bg-destructive/10 disabled:cursor-not-allowed disabled:opacity-60">{activeOperation === `delete:${employee.id}` ? <LoaderCircle className="size-4 animate-spin" /> : <Trash2 className="size-4" />} Eliminar</button></div></div>)}
+                  {isLoading ? <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground"><LoaderCircle className="size-5 animate-spin" /> Cargando empleados…</div> : employees.length === 0 ? <p className="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">Todavía no hay empleados en esta pyme.</p> : employees.map((employee) => <div key={employee.id} className="flex flex-col gap-3 rounded-2xl border border-border/80 bg-card p-4 md:flex-row md:items-center md:justify-between"><div className="flex min-w-0 items-center gap-3"><span className="flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary/10 text-sm font-semibold text-primary">{employee.profile_pic ? <img src={resolveMediaUrl(employee.profile_pic) ?? undefined} alt={employee.username} className="size-full object-cover" /> : employee.username.slice(0, 1).toUpperCase()}</span><div className="min-w-0"><p className="truncate font-semibold">{employee.username}</p><p className="truncate text-sm text-muted-foreground">{employee.email}</p></div></div><div className="flex items-center gap-2"><select value={employee.role} disabled={activeOperation !== null} onChange={(event) => void handleRoleChange(employee, event.target.value as EmployeeRole)} className="rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary">{roles.map((entry) => <option key={entry} value={entry}>{roleLabel[entry]}</option>)}</select><button type="button" disabled={activeOperation !== null} onClick={() => void handleDelete(employee)} className="inline-flex items-center gap-1 rounded-xl border border-destructive/25 px-3 py-2 text-sm font-medium text-destructive hover:bg-destructive/10 disabled:cursor-not-allowed disabled:opacity-60">{activeOperation === `delete:${employee.id}` ? <LoaderCircle className="size-4 animate-spin" /> : <Trash2 className="size-4" />} Eliminar</button></div></div>)}
                 </div>
               </>
             )}
           </div>
-        </div>
+        </div>,
+        document.body,
       ) : null}
     </>
   )
